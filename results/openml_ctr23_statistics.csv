@@ -1,0 +1,6 @@
+task_id,dataset_name,target_name,n_samples,n_features,missing_data,categorical_features,R2_RandomForestRegressor,MSE_RandomForestRegressor,RMSE_RandomForestRegressor,R2_XGBRegressor,MSE_XGBRegressor,RMSE_XGBRegressor
+361234,abalone,rings,"4,177",8,0,1,0.55 +/- 0.02,0.45 +/- 0.04,0.67 +/- 0.03,0.47 +/- 0.02,0.53 +/- 0.05,0.73 +/- 0.03
+361235,airfoil_self_noise,sound_pressure,"1,503",5,0,0,0.94 +/- 0.01,0.06 +/- 0.01,0.24 +/- 0.02,0.96 +/- 0.01,0.04 +/- 0.01,0.19 +/- 0.03
+361236,auction_verification,verification.time,"2,043",7,0,2,0.99 +/- 0.00,0.01 +/- 0.00,0.07 +/- 0.01,1.00 +/- 0.00,0.00 +/- 0.00,0.03 +/- 0.00
+361237,concrete_compressive_strength,strength,"1,030",8,0,0,0.91 +/- 0.03,0.08 +/- 0.02,0.29 +/- 0.04,0.94 +/- 0.02,0.06 +/- 0.02,0.24 +/- 0.04
+361241,physiochemical_protein,RMSD,"45,730",9,0,0,0.68 +/- 0.00,0.32 +/- 0.01,0.56 +/- 0.01,0.63 +/- 0.01,0.37 +/- 0.01,0.61 +/- 0.01

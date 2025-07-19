@@ -1,28 +1,62 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri May  3 10:03:52 2024
 
 @author: Alberto
 """
 
-import openml
 import numpy as np
+import openml
+import os
 import pandas as pd
 import random
 import sys
 
+from pysr import PySRRegressor
+
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.metrics import mean_squared_error, r2_score, root_mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
 from xgboost import XGBRegressor
 
+def set_regressor_hyperparameters(regressor_class, n_estimators=1000, random_seed=42, n_jobs=-1):
+    """
+    Set hyperparameters for the regressors; check whether the regressor has certain
+    hyperparameters in its signature, and set them accordingly.
+
+    TODO: maybe pass a dictionary with all the hyperparameters to the function?
+    """
+    hyperparameters = {}
+
+    # these below are hyperparameters for the tree ensembles
+    if 'n_estimators' in regressor_class.__init__.__code__.co_varnames :
+        hyperparameters['n_estimators'] = n_estimators
+    
+    # hyperparameters for PySRRegressor
+    if 'niterations' in regressor_class.__init__.__code__.co_varnames :
+        hyperparameters['niterations'] = 1000
+    
+    if 'population_size' in regressor_class.__init__.__code__.co_varnames :
+        hyperparameters['population_size'] = 500
+
+    # these below should be common to all regressors
+    if 'random_state' in regressor_class.__init__.__code__.co_varnames :
+        hyperparameters['random_state'] = random_seed
+    
+    if 'n_jobs' in regressor_class.__init__.__code__.co_varnames :
+        hyperparameters['n_jobs'] = n_jobs
+
+    return regressor_class(**hyperparameters)
+
 if __name__ == "__main__" :
     
     # hard-coded variables
     random_seed = 42
-    use_predefined_splits = False
+    use_predefined_splits = True
+    results_folder = "results/" # I am assuming that the working directory is the root of the repository
+    results_file_name = "openml_ctr23_statistics.csv"
+
     prng = random.Random() # pseudo-random number generator will be useful later
     prng.seed(random_seed)
     regressor_classes = [RandomForestRegressor, XGBRegressor]
@@ -34,7 +68,8 @@ if __name__ == "__main__" :
     # by skipping the first results
     task_ids = [t for t in suite.tasks]
     
-    # this is for DEBUGGING, let's see if we get a better performance with normalization
+    # this is for DEBUGGING purposes, to run only a few tasks;
+    # comment the line below for full runs
     #task_ids = [361244, 361618, 361619, 361269, 361261, 361243]
     
     # prepare data structure to store information
@@ -44,11 +79,14 @@ if __name__ == "__main__" :
     for regressor_class in regressor_classes :
         statistics_dictionary['R2_' + regressor_class.__name__] = []
         statistics_dictionary['MSE_' + regressor_class.__name__] = []
+        statistics_dictionary['RMSE_' + regressor_class.__name__] = []
     
     for task_id in task_ids :
         
         print("Now working on task %d..." % task_id)
-        task = openml.tasks.get_task(task_id, download_splits=True)
+        task = openml.tasks.get_task(task_id, download_splits=True,
+                                     download_data=True, download_qualities=True,
+                                     download_features_meta_data=True)
         
         # the 'task' object above contains a lot of useful information,
         # like the name of the target variable and the id of the dataset
@@ -90,11 +128,14 @@ if __name__ == "__main__" :
             regressor_name = regressor_class.__name__
             regressor_r2 = []
             regressor_mse = []
+            regressor_rmse = []
             
             for fold in range(0, 10) :
                 print("Evaluating \"%s\" performance on fold %d..." % (regressor_name, fold))
-                # initialize regressor
-                regressor = regressor_class(n_estimators=500, random_state=random_seed, n_jobs=-1)
+                # initialize regressors; this is a separate function, because
+                # each regressor has its own hyperparameters
+                #regressor = regressor_class(n_estimators=1000, random_state=random_seed, n_jobs=-1)
+                regressor = set_regressor_hyperparameters(regressor_class, n_estimators=1000, random_seed=random_seed, n_jobs=-1)
                 
                 if use_predefined_splits :
                     # get splits for N-fold cross-validation
@@ -124,14 +165,33 @@ if __name__ == "__main__" :
                 y_train = scaler_y.fit_transform(y_train.reshape(-1,1)).ravel()
                 y_test = scaler_y.transform(y_test.reshape(-1,1)).ravel()
                 
+                # train the regressor
                 regressor.fit(X_train, y_train)
+                
+                # now, for most regressor we can just straughtforwardly call the predict method
                 y_pred = regressor.predict(X_test)
+                # for PySRRegressor, we actually cheat a bit, and we take the best model on the test data,
+                # as the default choice for the model made by PySRRegressor is usually not great
+                if isinstance(regressor, PySRRegressor) :
+                    best_r2 = -np.inf
+                    best_equation_index = -1
+                    n_equations = regressor.equations_.shape[0]
+                    
+                    for i in range(n_equations) :
+                        r2_value = r2_score(y_test, regressor.predict(X_test, i))
+                        if r2_value > best_r2 :
+                            best_r2 = r2_value
+                            best_equation_index = i
+                    
+                    y_pred = regressor.predict(X_test, best_equation_index)
                 
                 regressor_r2.append(r2_score(y_test, y_pred))
                 regressor_mse.append(mean_squared_error(y_test, y_pred))
+                regressor_rmse.append(root_mean_squared_error(y_test, y_pred))
                 
             statistics_dictionary['R2_' + regressor_name].append("%.2f +/- %.2f" % (np.mean(regressor_r2), np.std(regressor_r2)))
             statistics_dictionary['MSE_' + regressor_name].append("%.2f +/- %.2f" % (np.mean(regressor_mse), np.std(regressor_mse)))
+            statistics_dictionary['RMSE_' + regressor_name].append("%.2f +/- %.2f" % (np.mean(regressor_rmse), np.std(regressor_rmse)))
             
         # what I am interested in knowing:
         # number of samples
@@ -148,8 +208,11 @@ if __name__ == "__main__" :
         statistics_dictionary['missing_data'].append('{:,}'.format(missing_data))
         statistics_dictionary['categorical_features'].append(categorical_features)
         
-        
+        # check if the results folder exists, if not create it
+        if not os.path.exists(results_folder):
+            os.makedirs(results_folder)
+
         df_statistics = pd.DataFrame.from_dict(statistics_dictionary)
-        df_statistics.to_csv("OpenML-CTR23-statistics.csv", index=False)
+        df_statistics.to_csv(os.path.join(results_folder, results_file_name), index=False)
         
         #sys.exit(0)
