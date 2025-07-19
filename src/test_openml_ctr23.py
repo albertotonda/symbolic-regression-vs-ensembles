@@ -20,35 +20,6 @@ from sklearn.preprocessing import StandardScaler
 
 from xgboost import XGBRegressor
 
-def set_regressor_hyperparameters(regressor_class, n_estimators=1000, random_seed=42, n_jobs=-1):
-    """
-    Set hyperparameters for the regressors; check whether the regressor has certain
-    hyperparameters in its signature, and set them accordingly.
-
-    TODO: maybe pass a dictionary with all the hyperparameters to the function?
-    """
-    hyperparameters = {}
-
-    # these below are hyperparameters for the tree ensembles
-    if 'n_estimators' in regressor_class.__init__.__code__.co_varnames :
-        hyperparameters['n_estimators'] = n_estimators
-    
-    # hyperparameters for PySRRegressor
-    if 'niterations' in regressor_class.__init__.__code__.co_varnames :
-        hyperparameters['niterations'] = 1000
-    
-    if 'population_size' in regressor_class.__init__.__code__.co_varnames :
-        hyperparameters['population_size'] = 500
-
-    # these below should be common to all regressors
-    if 'random_state' in regressor_class.__init__.__code__.co_varnames :
-        hyperparameters['random_state'] = random_seed
-    
-    if 'n_jobs' in regressor_class.__init__.__code__.co_varnames :
-        hyperparameters['n_jobs'] = n_jobs
-
-    return regressor_class(**hyperparameters)
-
 if __name__ == "__main__" :
     
     # hard-coded variables
@@ -56,10 +27,20 @@ if __name__ == "__main__" :
     use_predefined_splits = True
     results_folder = "results/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
+    regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
+    #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
+    metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
 
-    prng = random.Random() # pseudo-random number generator will be useful later
-    prng.seed(random_seed)
-    regressor_classes = [RandomForestRegressor, XGBRegressor]
+    # hyperparameters for the regressors
+    hyperparameter_values = {
+        'RandomForestRegressor': {'n_estimators' : 1000, 'random_state' : random_seed, 'n_jobs' : -1},
+        'XGBRegressor': {'n_estimators' : 1000, 'random_state' : random_seed, 'n_jobs' : -1},
+        'PySRRegressor': {'niterations' : 100, 'population_size' : 50,
+                          'binary_operators' : ["+", "-", "*", "/"],
+                          'unary_operators' : ["sin", "cos", "tan", "log", "exp"], 
+                          'temp_equation_file' : True,
+                          'random_state' : random_seed, 'procs' : None, 'parallelism' : 'multiprocessing'}
+    }
     
     # load CTR23 regression benchmark suite
     suite = openml.study.get_suite(353)
@@ -67,7 +48,16 @@ if __name__ == "__main__" :
     # get all task_ids, so that if there is a crash we can easily restart
     # by skipping the first results
     task_ids = [t for t in suite.tasks]
-    
+
+    # check if the results file already exists, if so, load it
+    # if it exists, we can skip the tasks that are already in the file
+    if os.path.exists(os.path.join(results_folder, results_file_name)) :
+        df_statistics = pd.read_csv(os.path.join(results_folder, results_file_name))
+        task_ids = [t for t in task_ids if t not in df_statistics['task_id'].values]
+        print("Found existing results file, skipping %d tasks." % (len(df_statistics)))
+    else :
+        print("No existing results file found, starting from scratch.")
+
     # this is for DEBUGGING purposes, to run only a few tasks;
     # comment the line below for full runs
     #task_ids = [361244, 361618, 361619, 361269, 361261, 361243]
@@ -76,10 +66,9 @@ if __name__ == "__main__" :
     statistics_dictionary = {'task_id' : [], 'dataset_name' : [], 'target_name': [], 'n_samples' : [],
                              'n_features' : [], 'missing_data' : [], 'categorical_features' : [],}
     
-    for regressor_class in regressor_classes :
-        statistics_dictionary['R2_' + regressor_class.__name__] = []
-        statistics_dictionary['MSE_' + regressor_class.__name__] = []
-        statistics_dictionary['RMSE_' + regressor_class.__name__] = []
+    for metric in metrics.keys() :
+        for regressor_class in regressor_classes :
+            statistics_dictionary[metric + '_' + regressor_class.__name__] = []
     
     for task_id in task_ids :
         
@@ -126,16 +115,13 @@ if __name__ == "__main__" :
         for regressor_class in regressor_classes :
             # mean performance of regressor 
             regressor_name = regressor_class.__name__
-            regressor_r2 = []
-            regressor_mse = []
-            regressor_rmse = []
+            metric_values = {metric : [] for metric in metrics.keys()}
             
             for fold in range(0, 10) :
                 print("Evaluating \"%s\" performance on fold %d..." % (regressor_name, fold))
-                # initialize regressors; this is a separate function, because
-                # each regressor has its own hyperparameters
-                #regressor = regressor_class(n_estimators=1000, random_state=random_seed, n_jobs=-1)
-                regressor = set_regressor_hyperparameters(regressor_class, n_estimators=1000, random_seed=random_seed, n_jobs=-1)
+                
+                # each regressor has its own hyperparameters, read from the dictionary
+                regressor = regressor_class(**hyperparameter_values[regressor_name])
                 
                 if use_predefined_splits :
                     # get splits for N-fold cross-validation
@@ -184,14 +170,24 @@ if __name__ == "__main__" :
                             best_equation_index = i
                     
                     y_pred = regressor.predict(X_test, best_equation_index)
+                    print("Best equation index: %d, R2: %.2f" % (best_equation_index, best_r2))
+                    
+                    # also save equations to the results folder
+                    regressor.equations_.to_csv(os.path.join(results_folder, "pysr_equations_task_%d.csv" % task_id), index=False)
                 
-                regressor_r2.append(r2_score(y_test, y_pred))
-                regressor_mse.append(mean_squared_error(y_test, y_pred))
-                regressor_rmse.append(root_mean_squared_error(y_test, y_pred))
-                
-            statistics_dictionary['R2_' + regressor_name].append("%.2f +/- %.2f" % (np.mean(regressor_r2), np.std(regressor_r2)))
-            statistics_dictionary['MSE_' + regressor_name].append("%.2f +/- %.2f" % (np.mean(regressor_mse), np.std(regressor_mse)))
-            statistics_dictionary['RMSE_' + regressor_name].append("%.2f +/- %.2f" % (np.mean(regressor_rmse), np.std(regressor_rmse)))
+                # store partial results for the current fold
+                for metric_name, metric_function in metrics.items() :
+                    metric_value = metric_function(y_test, y_pred)
+                    metric_values[metric_name].append(metric_value)
+                    #print("Fold %d: %s = %.4f" % (fold, metric_name, metric_value))
+
+            # update the statistics dictionary with the mean and std of the metric values
+            for metric_name, metric_values_list in metric_values.items() :
+                regressor_metric = np.array(metric_values_list)
+                statistics_dictionary[metric_name + '_' + regressor_name].append(
+                    "%.2f +/- %.2f" % (np.mean(regressor_metric), np.std(regressor_metric))
+                )
+                #print("Mean %s for %s: %.2f, std: %.2f" % (metric_name, regressor_name, np.mean(regressor_metric), np.std(regressor_metric)))
             
         # what I am interested in knowing:
         # number of samples
