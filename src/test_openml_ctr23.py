@@ -173,7 +173,8 @@ if __name__ == "__main__" :
                     print("Best equation index: %d, R2: %.2f" % (best_equation_index, best_r2))
                     
                     # also save equations to the results folder
-                    regressor.equations_.to_csv(os.path.join(results_folder, "pysr_equations_task_%d.csv" % task_id), index=False)
+                    regressor.equations_.to_csv(
+                        os.path.join(results_folder, "pysr_equations_task_%d_fold_%d.csv" % (task_id, fold)), index=False)
                 
                 # store partial results for the current fold
                 for metric_name, metric_function in metrics.items() :
