@@ -8,6 +8,7 @@ import numpy as np
 import openml
 import os
 import pandas as pd
+import pickle
 import random
 import sys
 
@@ -25,11 +26,15 @@ if __name__ == "__main__" :
     # hard-coded variables
     random_seed = 42
     use_predefined_splits = True
-    results_folder = "results/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20250721/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
     #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
     metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
+
+    # check if the results folder exists, if not create it
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
 
     # hyperparameters for the regressors
     hyperparameter_values = {
@@ -87,12 +92,13 @@ if __name__ == "__main__" :
         missing_data = df_X.isnull().sum().sum() + df_y.isnull().sum()
         
         if missing_data > 0 :
-            # we actually have to go with a task/dataset-specific correction
-            if task_id == 361268 :
+            # we actually have to go with a task/dataset-specific correction, I think,
+            # as there are only two datasets with missing values
+            if task_id == 361268 : # dataset fps_benchmark
                 # this task has several columns with A LOT of missing data,
                 # so we are just going to drop them
                 df_X.dropna(axis=1, inplace=True)
-            elif task_id == 361616 :
+            elif task_id == 361616 : # dataset Moneyball
                 # again, a few columns with 800/1200 missing values, get dropped
                 df_X.dropna(axis=1, inplace=True)
         
@@ -181,6 +187,19 @@ if __name__ == "__main__" :
                     metric_value = metric_function(y_test, y_pred)
                     metric_values[metric_name].append(metric_value)
                     #print("Fold %d: %s = %.4f" % (fold, metric_name, metric_value))
+
+                # now, at this point we have everything related to the current fold;
+                # so, let's be over-cautious and save the regressor to a file
+                regressor_file_name = os.path.join(results_folder, 
+                                                    "%s_task_%d_fold_%d.pkl" % (regressor_name, task_id, fold))
+                with open(regressor_file_name, 'wb') as f :
+                    pickle.dump(regressor, f)
+                
+                # let's also save the predictions in the y_pred array as a CSV file
+                y_pred_file_name = os.path.join(results_folder, 
+                                                "%s_task_%d_fold_%d.csv" % (regressor_name, task_id, fold))
+                y_pred_dictionary = {'test_index' : test_index, task.target_name + "_pred" : y_pred, task.target_name + "_true" : y_test}
+                pd.DataFrame.from_dict(y_pred_dictionary).to_csv(y_pred_file_name, index=False)
 
             # update the statistics dictionary with the mean and std of the metric values
             for metric_name, metric_values_list in metric_values.items() :
