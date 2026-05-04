@@ -16,7 +16,7 @@ from pysr import PySRRegressor
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, root_mean_squared_error
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from xgboost import XGBRegressor
@@ -26,7 +26,7 @@ if __name__ == "__main__" :
     # hard-coded variables
     random_seed = 42
     use_predefined_splits = True
-    results_folder = "results_20250721/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260504/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
     #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
@@ -40,7 +40,7 @@ if __name__ == "__main__" :
     hyperparameter_values = {
         'RandomForestRegressor': {'n_estimators' : 1000, 'random_state' : random_seed, 'n_jobs' : -1},
         'XGBRegressor': {'n_estimators' : 1000, 'random_state' : random_seed, 'n_jobs' : -1},
-        'PySRRegressor': {'niterations' : 100, 'population_size' : 50,
+        'PySRRegressor': {'niterations' : 100, 'population_size' : 27,
                           'binary_operators' : ["+", "-", "*", "/"],
                           'unary_operators' : ["sin", "cos", "tan", "log", "exp"], 
                           'temp_equation_file' : True,
@@ -54,15 +54,6 @@ if __name__ == "__main__" :
     # by skipping the first results
     task_ids = [t for t in suite.tasks]
 
-    # check if the results file already exists, if so, load it
-    # if it exists, we can skip the tasks that are already in the file
-    if os.path.exists(os.path.join(results_folder, results_file_name)) :
-        df_statistics = pd.read_csv(os.path.join(results_folder, results_file_name))
-        task_ids = [t for t in task_ids if t not in df_statistics['task_id'].values]
-        print("Found existing results file, skipping %d tasks." % (len(df_statistics)))
-    else :
-        print("No existing results file found, starting from scratch.")
-
     # this is for DEBUGGING purposes, to run only a few tasks;
     # comment the line below for full runs
     #task_ids = [361244, 361618, 361619, 361269, 361261, 361243]
@@ -70,7 +61,19 @@ if __name__ == "__main__" :
     # prepare data structure to store information
     statistics_dictionary = {'task_id' : [], 'dataset_name' : [], 'target_name': [], 'n_samples' : [],
                              'n_features' : [], 'missing_data' : [], 'categorical_features' : [],}
-    
+
+    # check if the results file already exists, if so, load it
+    # if it exists, we can skip the tasks that are already in the file
+    if os.path.exists(os.path.join(results_folder, results_file_name)) :
+        df_statistics = pd.read_csv(os.path.join(results_folder, results_file_name))
+        # convert the df_statistics dataframe into the statistics_dictionary
+        statistics_dictionary = df_statistics.to_dict(orient='list')
+        # now we can skip the tasks that are already in the file
+        task_ids = [t for t in task_ids if t not in df_statistics['task_id'].values]
+        print("Found existing results file, skipping %d tasks." % (len(df_statistics)))
+    else :
+        print("No existing results file found, starting from scratch.")
+
     for metric in metrics.keys() :
         for regressor_class in regressor_classes :
             statistics_dictionary[metric + '_' + regressor_class.__name__] = []
@@ -145,8 +148,15 @@ if __name__ == "__main__" :
                     folds = [(train_index, test_index) for train_index, test_index in kf.split(X, y)]
                     train_index, test_index = folds[0]
                 
+                # get training and test data for the current fold
                 X_train, X_test = X[train_index], X[test_index]
                 y_train, y_test = y[train_index], y[test_index]
+                X_val, y_val = None, None # most of the regressors do not use a validation set, but PySR will
+
+                # if we are working with PySRRegressor, we need to set the validation data, 
+                # as it is used to select the best model during training
+                if isinstance(regressor, PySRRegressor) :
+                    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=random_seed)
                 
                 # normalization (it should not impact performance at all, let's see)
                 scaler_X = StandardScaler()
@@ -157,6 +167,10 @@ if __name__ == "__main__" :
                 y_train = scaler_y.fit_transform(y_train.reshape(-1,1)).ravel()
                 y_test = scaler_y.transform(y_test.reshape(-1,1)).ravel()
                 
+                if X_val is not None and y_val is not None :
+                    X_val = scaler_X.transform(X_val)
+                    y_val = scaler_y.transform(y_val.reshape(-1,1)).ravel()
+
                 # train the regressor
                 regressor.fit(X_train, y_train)
                 
@@ -170,7 +184,7 @@ if __name__ == "__main__" :
                     n_equations = regressor.equations_.shape[0]
                     
                     for i in range(n_equations) :
-                        r2_value = r2_score(y_test, regressor.predict(X_test, i))
+                        r2_value = r2_score(y_val, regressor.predict(X_val, i))
                         if r2_value > best_r2 :
                             best_r2 = r2_value
                             best_equation_index = i
@@ -180,7 +194,18 @@ if __name__ == "__main__" :
                     
                     # also save equations to the results folder
                     regressor.equations_.to_csv(
-                        os.path.join(results_folder, "pysr_equations_task_%d_fold_%d.csv" % (task_id, fold)), index=False)
+                        os.path.join(results_folder, "pysr_equations_task_%d_fold_%d.csv" % (task_id, fold)), index=False
+                        )
+                    
+                    # also save the best equation as a text file, for easier readability
+                    best_equation = regressor.latex(best_equation_index)
+                    with open(os.path.join(results_folder, "pysr_best_equation_task_%d_fold_%d.txt" % (task_id, fold)), 'w') as fp :
+                        fp.write(best_equation)
+                    
+                    # also save the equation that PySR selects by default, for comparison
+                    default_equation = regressor.latex()
+                    with open(os.path.join(results_folder, "pysr_default_equation_task_%d_fold_%d.txt" % (task_id, fold)), 'w') as fp :
+                        fp.write(default_equation)
                 
                 # store partial results for the current fold
                 for metric_name, metric_function in metrics.items() :
