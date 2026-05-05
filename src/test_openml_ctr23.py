@@ -68,7 +68,7 @@ if __name__ == "__main__" :
         df_statistics = pd.read_csv(os.path.join(results_folder, results_file_name))
         # convert the df_statistics dataframe into the statistics_dictionary
         statistics_dictionary = df_statistics.to_dict(orient='list')
-        # now we can skip the tasks that are already in the file
+        # now we can skip the tasks that are already in the filec
         task_ids = [t for t in task_ids if t not in df_statistics['task_id'].values]
         print("Found existing results file, skipping %d tasks." % (len(df_statistics)))
     else :
@@ -76,7 +76,13 @@ if __name__ == "__main__" :
 
     for metric in metrics.keys() :
         for regressor_class in regressor_classes :
-            statistics_dictionary[metric + '_' + regressor_class.__name__] = []
+            # create two separate entries for PySR, one for the default equation
+            # and one for the best equation identified with the validation set
+            if regressor_class == PySRRegressor :
+                statistics_dictionary[metric + '_' + regressor_class.__name__ + '_default'] = []
+                statistics_dictionary[metric + '_' + regressor_class.__name__ + '_validation'] = []
+            else :
+                statistics_dictionary[metric + '_' + regressor_class.__name__] = []
     
     for task_id in task_ids :
         
@@ -124,8 +130,16 @@ if __name__ == "__main__" :
         for regressor_class in regressor_classes :
             # mean performance of regressor 
             regressor_name = regressor_class.__name__
-            metric_values = {metric : [] for metric in metrics.keys()}
-            
+
+            # tweak the dictionary with the metrics if the regressor is PySRRegressor
+            if regressor_class == PySRRegressor :
+                # we explicitly initialize the dictionaries like this to avoid issues with pointers,
+                # which already created some issues in the past
+                metric_values = {regressor_name + '_validation' : {metric : [] for metric in metrics.keys()}, 
+                                regressor_name + '_default' : {metric : [] for metric in metrics.keys()}}
+            else :
+                metric_values = {regressor_name : {metric : [] for metric in metrics.keys()}}
+
             for fold in range(0, 10) :
                 print("Evaluating \"%s\" performance on fold %d..." % (regressor_name, fold))
                 
@@ -171,16 +185,25 @@ if __name__ == "__main__" :
                     X_val = scaler_X.transform(X_val)
                     y_val = scaler_y.transform(y_val.reshape(-1,1)).ravel()
 
-                # train the regressor
-                regressor.fit(X_train, y_train)
-                
-                # now, for most regressor we can just straughtforwardly call the predict method
-                y_pred = regressor.predict(X_test)
-                # for PySRRegressor, we actually cheat a bit, and we take the best model on the test data,
-                # as the default choice for the model made by PySRRegressor is usually not great
+                # now, let's split the code here into two branches: one for PySRRegressor, which employs
+                # the validation set to select the best model on the complexity/error Pareto front, and
+                # one for the other regressors, which might employ the validation set to perform
+                # hyperparameter tuning
                 if isinstance(regressor, PySRRegressor) :
-                    best_r2 = -np.inf
+                
+                    # train the regressor
+                    regressor.fit(X_train, y_train)
+                
+                    # get predictions for the test set, using the default model selected by PySRRegressor
+                    y_test_pred_default = regressor.predict(X_test)
+                    
+                    # now, we iterate over all equations in the Pareto front, to obtain two different pieces of
+                    # information: the equation with the best R2 value on the validation set, and the index of
+                    # the equation selected by PySRRegressor by default
+                    default_equation_index = -1
                     best_equation_index = -1
+                    best_r2 = -np.inf
+                    
                     n_equations = regressor.equations_.shape[0]
                     
                     for i in range(n_equations) :
@@ -188,9 +211,16 @@ if __name__ == "__main__" :
                         if r2_value > best_r2 :
                             best_r2 = r2_value
                             best_equation_index = i
+
+                        if regressor.latex(i) == regressor.latex() :
+                            default_equation_index = i
                     
-                    y_pred = regressor.predict(X_test, best_equation_index)
+                    y_test_pred_best = regressor.predict(X_test, best_equation_index)
                     print("Best equation index: %d, R2: %.2f" % (best_equation_index, best_r2))
+
+                    # compute r2 metrics
+                    r2_test_best = r2_score(y_test, y_test_pred_best)
+                    r2_test_default = r2_score(y_test, y_test_pred_default)
                     
                     # also save equations to the results folder
                     regressor.equations_.to_csv(
@@ -206,32 +236,63 @@ if __name__ == "__main__" :
                     default_equation = regressor.latex()
                     with open(os.path.join(results_folder, "pysr_default_equation_task_%d_fold_%d.txt" % (task_id, fold)), 'w') as fp :
                         fp.write(default_equation)
-                
-                # store partial results for the current fold
-                for metric_name, metric_function in metrics.items() :
-                    metric_value = metric_function(y_test, y_pred)
-                    metric_values[metric_name].append(metric_value)
-                    #print("Fold %d: %s = %.4f" % (fold, metric_name, metric_value))
 
-                # now, at this point we have everything related to the current fold;
-                # so, let's be over-cautious and save the regressor to a file
-                regressor_file_name = os.path.join(results_folder, 
-                                                    "%s_task_%d_fold_%d.pkl" % (regressor_name, task_id, fold))
-                with open(regressor_file_name, 'wb') as f :
-                    pickle.dump(regressor, f)
-                
-                # let's also save the predictions in the y_pred array as a CSV file
-                y_pred_file_name = os.path.join(results_folder, 
-                                                "%s_task_%d_fold_%d.csv" % (regressor_name, task_id, fold))
-                y_pred_dictionary = {'test_index' : test_index, task.target_name + "_pred" : y_pred, task.target_name + "_true" : y_test}
-                pd.DataFrame.from_dict(y_pred_dictionary).to_csv(y_pred_file_name, index=False)
+                    # also save the indexes of the best and default equations, for easier comparison
+                    dict_equation_indexes = {
+                        'equation_index' : [best_equation_index, default_equation_index],
+                        'equation_type' : ['best_validation', 'default'],
+                        'equation' : [regressor.sympy(best_equation_index), regressor.sympy(default_equation_index)],
+                        'r2_test' : [r2_test_best, r2_test_default]
+                    }
+                    df_equation_indexes = pd.DataFrame.from_dict(dict_equation_indexes)
+                    df_equation_indexes.to_csv(os.path.join(results_folder, "pysr_equation_indexes_task_%d_fold_%d.csv" % (task_id, fold)), index=False)
+
+                    # and now, save metrics for both the best and default equations
+                    for regressor_type, pred in [("_validation", y_test_pred_best), ("_default", y_test_pred_default)] :
+                        print("type:", regressor_type, "pred:", pred)
+                        for metric_name, metric_function in metrics.items() :
+                            metric_value = metric_function(y_test, pred)
+                            metric_values[regressor_name + regressor_type][metric_name].append(metric_value)   
+
+                    # rename the y_test_pred for later use
+                    y_test_pred = y_test_pred_best # this is the one we will save in the CSV file, for consistency with the other regressors                 
+
+                    # debug
+                    print("metric_values:", metric_values)
+
+                else :
+                    # TODO hyperparameter tuning
+                    # train the regressor
+                    regressor.fit(X_train, y_train)
+                    
+                    # get predictions for the test set
+                    y_test_pred = regressor.predict(X_test)
+
+                    # store partial results for the current fold
+                    for metric_name, metric_function in metrics.items() :
+                        metric_value = metric_function(y_test, y_test_pred)
+                        metric_values[regressor_name][metric_name].append(metric_value)
+
+            # now, at this point we have everything related to the current fold;
+            # so, let's be over-cautious and save the regressor to a file
+            regressor_file_name = os.path.join(results_folder, 
+                                                "%s_task_%d_fold_%d.pkl" % (regressor_name, task_id, fold))
+            with open(regressor_file_name, 'wb') as f :
+                pickle.dump(regressor, f)
+            
+            # let's also save the predictions in the y_pred array as a CSV file
+            y_pred_file_name = os.path.join(results_folder, 
+                                            "%s_task_%d_fold_%d.csv" % (regressor_name, task_id, fold))
+            y_pred_dictionary = {'test_index' : test_index, task.target_name + "_pred" : y_test_pred, task.target_name + "_true" : y_test}
+            pd.DataFrame.from_dict(y_pred_dictionary).to_csv(y_pred_file_name, index=False)
 
             # update the statistics dictionary with the mean and std of the metric values
-            for metric_name, metric_values_list in metric_values.items() :
-                regressor_metric = np.array(metric_values_list)
-                statistics_dictionary[metric_name + '_' + regressor_name].append(
-                    "%.2f +/- %.2f" % (np.mean(regressor_metric), np.std(regressor_metric))
-                )
+            for regressor_stat_name in metric_values.keys() :
+                for metric_name, metric_values_list in metric_values[regressor_stat_name].items() :
+                    regressor_metric = np.array(metric_values_list)
+                    statistics_dictionary[metric_name + '_' + regressor_stat_name].append(
+                        "%.4f +/- %.4f" % (np.mean(regressor_metric), np.std(regressor_metric))
+                    )
                 #print("Mean %s for %s: %.2f, std: %.2f" % (metric_name, regressor_name, np.mean(regressor_metric), np.std(regressor_metric)))
             
         # what I am interested in knowing:
