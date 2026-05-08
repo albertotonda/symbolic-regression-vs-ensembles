@@ -2,6 +2,11 @@
 """
 
 @author: Alberto
+
+TODO:
+1. manage the hyperparameter tuning part, timing the amount of time spent on PySR
+2. save PySR settings (and hyperparameter values) to the folder
+
 """
 
 import numpy as np
@@ -61,6 +66,16 @@ if __name__ == "__main__" :
     # prepare data structure to store information
     statistics_dictionary = {'task_id' : [], 'dataset_name' : [], 'target_name': [], 'n_samples' : [],
                              'n_features' : [], 'missing_data' : [], 'categorical_features' : [],}
+    
+    for metric in metrics.keys() :
+        for regressor_class in regressor_classes :
+            # create two separate entries for PySR, one for the default equation
+            # and one for the best equation identified with the validation set
+            if regressor_class == PySRRegressor :
+                statistics_dictionary[metric + '_' + regressor_class.__name__ + '_default'] = []
+                statistics_dictionary[metric + '_' + regressor_class.__name__ + '_validation'] = []
+            else :
+                statistics_dictionary[metric + '_' + regressor_class.__name__] = []
 
     # check if the results file already exists, if so, load it
     # if it exists, we can skip the tasks that are already in the file
@@ -73,17 +88,8 @@ if __name__ == "__main__" :
         print("Found existing results file, skipping %d tasks." % (len(df_statistics)))
     else :
         print("No existing results file found, starting from scratch.")
-
-    for metric in metrics.keys() :
-        for regressor_class in regressor_classes :
-            # create two separate entries for PySR, one for the default equation
-            # and one for the best equation identified with the validation set
-            if regressor_class == PySRRegressor :
-                statistics_dictionary[metric + '_' + regressor_class.__name__ + '_default'] = []
-                statistics_dictionary[metric + '_' + regressor_class.__name__ + '_validation'] = []
-            else :
-                statistics_dictionary[metric + '_' + regressor_class.__name__] = []
     
+    # start iterating over the different tasks in the benchmark suite
     for task_id in task_ids :
         
         print("Now working on task %d..." % task_id)
@@ -314,6 +320,7 @@ if __name__ == "__main__" :
         if not os.path.exists(results_folder):
             os.makedirs(results_folder)
 
+        print(statistics_dictionary)
         df_statistics = pd.DataFrame.from_dict(statistics_dictionary)
         df_statistics.to_csv(os.path.join(results_folder, results_file_name), index=False)
         
