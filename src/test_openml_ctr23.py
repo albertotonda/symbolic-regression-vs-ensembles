@@ -16,6 +16,7 @@ import pandas as pd
 import pickle
 import random
 import sys
+import time
 
 from pysr import PySRRegressor
 
@@ -31,7 +32,7 @@ if __name__ == "__main__" :
     # hard-coded variables
     random_seed = 42
     use_predefined_splits = True
-    results_folder = "results_20260504/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260509/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
     #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
@@ -67,7 +68,7 @@ if __name__ == "__main__" :
     statistics_dictionary = {'task_id' : [], 'dataset_name' : [], 'target_name': [], 'n_samples' : [],
                              'n_features' : [], 'missing_data' : [], 'categorical_features' : [],}
     
-    for metric in metrics.keys() :
+    for metric in list(metrics.keys()) + ['time_on_fold'] :
         for regressor_class in regressor_classes :
             # create two separate entries for PySR, one for the default equation
             # and one for the best equation identified with the validation set
@@ -132,6 +133,9 @@ if __name__ == "__main__" :
         # let's also get the name of the dataset
         dataset = task.get_dataset()
         print("Task %d is applied to data set \"%s\" (id=%d)" % (task_id, dataset.name, dataset.dataset_id))
+
+        # set up a variable to measure the amount of time PySR spends on the task
+        regressor_time_on_folds = []
         
         for regressor_class in regressor_classes :
             # mean performance of regressor 
@@ -196,9 +200,15 @@ if __name__ == "__main__" :
                 # one for the other regressors, which might employ the validation set to perform
                 # hyperparameter tuning
                 if isinstance(regressor, PySRRegressor) :
-                
+                    
+                    # measure time on fold
+                    pysr_start_time = time.time()
+
                     # train the regressor
                     regressor.fit(X_train, y_train)
+
+                    pysr_time = time.time() - pysr_start_time
+                    regressor_time_on_folds.append(pysr_time)
                 
                     # get predictions for the test set, using the default model selected by PySRRegressor
                     y_test_pred_default = regressor.predict(X_test)
@@ -267,9 +277,24 @@ if __name__ == "__main__" :
                     print("metric_values:", metric_values)
 
                 else :
+
+                    # here we assume that we collected the amount of time
+                    # that PySR spent on each fold, and we are going to use it
+                    # as a maximum time for hyperparameter tuning; it's the last element
+                    # in the list corresponding to the key "time_on_fold_PySRRegressor_default"
+                    print(statistics_dictionary)
+                    max_time_for_tuning = statistics_dictionary["time_on_fold_PySRRegressor_default"][-1].split(' ')[0] # this is a string like "123.45 +/- 67.89 seconds", we take the first part and convert it to a float
+                    max_time_for_tuning = float(max_time_for_tuning)
+                    print("Regressor \"%s\", max time for tuning: %.2f seconds" % 
+                          (regressor_name, max_time_for_tuning))
+
                     # TODO hyperparameter tuning
                     # train the regressor
+                    regressor_start_time = time.time()
                     regressor.fit(X_train, y_train)
+                    regressor_time = time.time() - regressor_start_time
+                    regressor_time_on_folds.append(regressor_time)
+                    print("Regressor \"%s\" training time: %.2f seconds" % (regressor_name, regressor_time))
                     
                     # get predictions for the test set
                     y_test_pred = regressor.predict(X_test)
@@ -279,28 +304,39 @@ if __name__ == "__main__" :
                         metric_value = metric_function(y_test, y_test_pred)
                         metric_values[regressor_name][metric_name].append(metric_value)
 
-            # now, at this point we have everything related to the current fold;
-            # so, let's be over-cautious and save the regressor to a file
-            regressor_file_name = os.path.join(results_folder, 
-                                                "%s_task_%d_fold_%d.pkl" % (regressor_name, task_id, fold))
-            with open(regressor_file_name, 'wb') as f :
-                pickle.dump(regressor, f)
+                # end if type of regressor
             
-            # let's also save the predictions in the y_pred array as a CSV file
-            y_pred_file_name = os.path.join(results_folder, 
-                                            "%s_task_%d_fold_%d.csv" % (regressor_name, task_id, fold))
-            y_pred_dictionary = {'test_index' : test_index, task.target_name + "_pred" : y_test_pred, task.target_name + "_true" : y_test}
-            pd.DataFrame.from_dict(y_pred_dictionary).to_csv(y_pred_file_name, index=False)
+                # now, at this point we have everything related to the current fold;
+                # so, let's be over-cautious and save the regressor to a file
+                regressor_file_name = os.path.join(results_folder, 
+                                                    "%s_task_%d_fold_%d.pkl" % (regressor_name, task_id, fold))
+                with open(regressor_file_name, 'wb') as f :
+                    pickle.dump(regressor, f)
+                
+                # let's also save the predictions in the y_pred array as a CSV file
+                y_pred_file_name = os.path.join(results_folder, 
+                                                "%s_task_%d_fold_%d.csv" % (regressor_name, task_id, fold))
+                y_pred_dictionary = {'test_index' : test_index, task.target_name + "_pred" : y_test_pred, task.target_name + "_true" : y_test}
+                pd.DataFrame.from_dict(y_pred_dictionary).to_csv(y_pred_file_name, index=False)
 
-            # update the statistics dictionary with the mean and std of the metric values
-            for regressor_stat_name in metric_values.keys() :
+            # end for each fold
+
+            # update the statistics dictionary with the mean and std of the metric values and time on fold
+            for regressor_stat_name in metric_values.keys():
+                # metric values
                 for metric_name, metric_values_list in metric_values[regressor_stat_name].items() :
                     regressor_metric = np.array(metric_values_list)
                     statistics_dictionary[metric_name + '_' + regressor_stat_name].append(
                         "%.4f +/- %.4f" % (np.mean(regressor_metric), np.std(regressor_metric))
                     )
+                # time on fold
+                statistics_dictionary['time_on_fold_' + regressor_stat_name].append(
+                    "%.4f +/- %.4f seconds" % (np.mean(regressor_time_on_folds), np.std(regressor_time_on_folds))
+                )
                 #print("Mean %s for %s: %.2f, std: %.2f" % (metric_name, regressor_name, np.mean(regressor_metric), np.std(regressor_metric)))
-            
+        
+        # end for each regressor
+
         # what I am interested in knowing:
         # number of samples
         # number of features
