@@ -282,7 +282,7 @@ if __name__ == "__main__" :
                     # that PySR spent on each fold, and we are going to use it
                     # as a maximum time for hyperparameter tuning; it's the last element
                     # in the list corresponding to the key "time_on_fold_PySRRegressor_default"
-                    print(statistics_dictionary)
+                    #print(statistics_dictionary) # debugging
                     max_time_for_tuning = statistics_dictionary["time_on_fold_PySRRegressor_default"][-1].split(' ')[0] # this is a string like "123.45 +/- 67.89 seconds", we take the first part and convert it to a float
                     max_time_for_tuning = float(max_time_for_tuning)
                     print("Regressor \"%s\", max time for tuning: %.2f seconds" % 
