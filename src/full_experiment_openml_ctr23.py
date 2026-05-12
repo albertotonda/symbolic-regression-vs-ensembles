@@ -33,7 +33,7 @@ from xgboost import XGBRegressor
 # local imports
 from common import initialize_logging, close_logging
 
-def get_sorted_tasks_ids(results_folder, results_file_name) :
+def get_sorted_tasks_ids() :
     """
     Sort all the tasks by number of samples (number of samples ~ to speed),
     then if a results file already exists, remove the tasks that are already completed.
@@ -45,16 +45,7 @@ def get_sorted_tasks_ids(results_folder, results_file_name) :
     print(sorted_tasks) # for debugging
     task_ids = sorted_tasks['tid'].tolist()
 
-    # if a results file already exists, remove the tasks that are already completed
-    # TODO scratch this, it will be managed fold by fold
-    completed_task_ids = []
-    results_file_path = os.path.join(results_folder, results_file_name)
-    if os.path.exists(results_file_path) :
-        results_df = pd.read_csv(results_file_path)
-        completed_task_ids = results_df["task_id"].unique().tolist()
-        task_ids = [tid for tid in task_ids if tid not in completed_task_ids]
-
-    return task_ids, completed_task_ids
+    return task_ids
 
 def prepare_data_structures(results_folder, results_file_name, metrics) :
     """
@@ -162,8 +153,7 @@ if __name__ == "__main__" :
     logger.info("Starting full experiment on OpenML CTR23 benchmark suite...")
 
     # get the list of task IDs to process, excluding the ones that are already completed
-    task_ids, completed_task_ids  = get_sorted_tasks_ids(results_folder, results_file_name)
-    logger.info("Found " + str(len(completed_task_ids)) + " completed tasks: " + str(completed_task_ids))
+    task_ids  = get_sorted_tasks_ids()
     logger.info("Found " + str(len(task_ids)) + " tasks to process: " + str(task_ids))
 
     # prepare data structures, eventually reading the existing results file if it exists
