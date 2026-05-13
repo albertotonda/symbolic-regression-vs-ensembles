@@ -113,27 +113,98 @@ def get_task_clean_data_and_name(task_id) :
         
     return X, y, dataset, task, missing_data, categorical_features
 
+def perform_pysr_extra_steps(task_id, fold_id, regressor, X_val, y_val, X_test, y_test, metrics, 
+                             fold_statistics, results_folder, logger) :
+    """
+    Perform extra steps specific to PySR, such as finding the best equation on the validation set
+    """
+    # search for the best equation on the validation set
+    logger.info("- Searching for the best equation on the validation set...")
+    n_equations = regressor.equations_.shape[0]
+    default_equation_index = -1
+    best_equation_index = -1
+    best_r2 = -np.inf
+    
+    for i in range(n_equations) :
+        r2_value = r2_score(y_val, regressor.predict(X_val, i))
+        if r2_value > best_r2 :
+            best_r2 = r2_value
+            best_equation_index = i
+
+        if regressor.latex(i) == regressor.latex() :
+            default_equation_index = i
+    
+    logger.info("- Best equation index: %d, R2 on validation set: %.4f" % (best_equation_index, best_r2))
+    
+    y_test_pred_default = regressor.predict(X_test, default_equation_index)
+    y_test_pred_best = regressor.predict(X_test, best_equation_index)
+
+    # update the fold_statistics dictionary with the metrics for the default and best equations
+    for key, val in fold_statistics.items() :
+        fold_statistics[key] = val * 2 # duplicate the value, to have one row for the default equation and one row for the best equation
+    
+    fold_statistics['regressor_name'] = [fold_statistics['regressor_name'][0] + "_default", fold_statistics['regressor_name'][0] + "_validation"]
+    for metric_name, metric in metrics.items() :
+        for y_pred in [y_test_pred_default, y_test_pred_best] :
+            if metric_name not in fold_statistics :
+                fold_statistics[metric_name] = []
+            fold_statistics[metric_name].append(metric(y_test, y_pred))
+
+    # save predictions of the default and best equation on the test set, as a CSV file
+    df_pred_default = pd.DataFrame({'y_test' : y_test, 'y_test_pred' : y_test_pred_default})
+    df_pred_default.to_csv(os.path.join(results_folder, "PySRRegressor_default_task_%d_fold_%d.csv" % (task_id, fold_id)), index=False)
+    df_pred_best = pd.DataFrame({'y_test' : y_test, 'y_test_pred' : y_test_pred_best})
+    df_pred_best.to_csv(os.path.join(results_folder, "PySRRegressor_validation_task_%d_fold_%d.csv" % (task_id, fold_id)), index=False)
+
+    # save LaTeX representation of all equations
+    with open(os.path.join(results_folder, "equation_default_task_%d_fold_%d.tex" % (task_id, fold_id)), "w") as fp :
+        fp.write(regressor.latex(default_equation_index))
+    with open(os.path.join(results_folder, "equation_best_task_%d_fold_%d.tex" % (task_id, fold_id)), "w") as fp :
+        fp.write(regressor.latex(best_equation_index))
+
+    return fold_statistics
+
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260511/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260513/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
-    val_set_ratio = 0.2 # percentage of the training set to use as validation    
+    val_set_ratio = 0.2 # percentage of the training set to use as validation
+    perform_hyperparameter_tuning = False # whether to perform hyperparameter tuning for the tree-based models
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
-    regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
+    #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
     metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
 
-    hyperparameters = {
-        'RandomForestRegressor': {'n_estimators' : 1000, 'random_state' : random_seed, 'n_jobs' : -1},
-        'XGBRegressor': {'n_estimators' : 1000, 'random_state' : random_seed, 'n_jobs' : -1},
+    # these are the default hyperparameters for the regressors
+    default_hyperparameters = {
+        'RandomForestRegressor': {'random_state' : random_seed, 'n_jobs' : -1},
+        'XGBRegressor': {'random_state' : random_seed, 'n_jobs' : -1},
         'PySRRegressor': {
-            'niterations' : 100, 
-            'population_size' : 27,
+            'temp_equation_file' : True,
+            'random_state' : random_seed, 
+            'procs' : None, 
+            'parallelism' : 'multiprocessing'
+            }
+    }
+
+    # another dictionary of values, to perform hyperparameter tuning with Optuna
+    tuning_hyperparameters = {
+        'RandomForestRegressor': {
+            'n_estimators' : [100, 200, 300], 
+            'max_depth' : [None, 10, 20]
+            },
+        'XGBRegressor': {
+            'n_estimators' : [100, 200, 300], 
+            'max_depth' : [None, 10, 20]
+            },
+        'PySRRegressor': {
+            'niterations' : 1000, 
+            'population_size' : 100,
             'binary_operators' : ["+", "-", "*", "/"],
-            'unary_operators' : ["sin", "cos", "tan", "log", "exp"], 
+            'unary_operators' : ["sin", "cos", "log", "exp"], 
             'temp_equation_file' : True,
             'random_state' : random_seed, 
             'procs' : None, 
@@ -166,7 +237,7 @@ if __name__ == "__main__" :
         # and several other information about the dataset
         X, y, dataset, task, missing_data, categorical_features = get_task_clean_data_and_name(task_id)
         logger.info("Processing task " + str(task_id) + " with dataset \"" + dataset.name 
-                    + "\",  %d samples, %d features" % (X.shape[0], X.shape[1]))
+                    + "\", %d samples, %d features" % (X.shape[0], X.shape[1]))
         
         # now iterate over regressors
         for regressor_class in regressor_classes :
@@ -204,34 +275,65 @@ if __name__ == "__main__" :
                     # on the final complexity/error Pareto front;
                     # otherwise, use the validation set to perform hyperparameter tuning
                     # using Optuna
-                    # TODO
-                    regressor = regressor_class(**hyperparameters[regressor_name])
+                    
+                    # in any case, we start by using default hyperparameters
+                    regressor = regressor_class(**default_hyperparameters[regressor_name])
 
-                    # we need to measure the time spent on each fold
+                    # we need to measure the time spent on training
                     time_start = time.time()
                     regressor.fit(X_train, y_train)
                     time_on_fold = time.time() - time_start
 
-                    # create the dictionary with the information for the row
+                    # get predictions and compute metrics
+                    y_test_pred = regressor.predict(X_test)
+
+                    # create the dictionary with the information for the row(s)
                     fold_statistics = {
-                        'task_id' : task_id, 
-                        'dataset_name' : dataset.name, 
-                        'target_name': dataset.default_target_attribute, 
-                        'n_samples' : X.shape[0],
-                        'n_features' : X.shape[1], 
-                        'missing_data' : missing_data, 
-                        'categorical_features' : categorical_features, 
-                        'fold_id' : fold_id, 
-                        'regressor_name' : regressor_name, 
-                        'time_on_fold' : time_on_fold
+                        'task_id' : [task_id], 
+                        'dataset_name' : [dataset.name], 
+                        'target_name': [dataset.default_target_attribute], 
+                        'n_samples' : ['{:,}'.format(X.shape[0])],
+                        'n_features' : ['{:,}'.format(X.shape[1])], 
+                        'missing_data' : ['{:,}'.format(missing_data)], 
+                        'categorical_features' : [categorical_features], 
+                        'fold_id' : [fold_id], 
+                        'regressor_name' : [regressor_name], 
+                        'time_on_fold' : [time_on_fold]
                     }
 
-                    y_test_pred = regressor.predict(X_test)
-                    for metric_name, metric in metrics.items() :
-                        fold_statistics[metric_name] = metric(y_test, y_test_pred)
+                    # now, if the regressor is PySR, we need to select an equation on the validation set
+                    # and compute the metrics on the test set using that equation
+                    if regressor_name == "PySRRegressor" :
+
+                        logger.info("Performing extra steps for PySRRegressor...")
+
+                        fold_statistics = perform_pysr_extra_steps(task_id, fold_id, regressor, 
+                            X_val, y_val, X_test, y_test, metrics, fold_statistics, results_folder, logger)
+
+                    elif perform_hyperparameter_tuning : 
+                        # otherwise, if the regressor is a tree-based model, we need to perform hyperparameter tuning using Optuna,
+                        # and then compute the metrics on the test set using the best hyperparameters
+                        logger.info("Performing extra steps for other regressors...")
+
+                        # first step: check mean time spent by PySRRegressor on folds of the same task,
+                        # and compute the total time available for hyperparameter tuning
+                        df_pysr = df_statistics[(df_statistics["task_id"] == task_id) & (df_statistics["regressor_name"] == "PySRRegressor")]
+                        mean_time_pysr = df_pysr["time_on_fold"].mean()
+                        logger.info("- Mean time spent by PySRRegressor on folds of the same task: %.2f seconds" % mean_time_pysr)
+
+                        time_available_for_tuning = max(0, mean_time_pysr - time_on_fold)
+                        logger.info("- Time available for tuning: %.2f seconds" % time_available_for_tuning)
+
+                        # TODO run Optuna hyperparameter tuning, with a timeout equal to the time available for tuning
+
+                        # TODO check performance of the best hyperparameters on the test set, and update the metrics in the dataframe
+
+                        for metric_name, metric in metrics.items() :
+                            fold_statistics[metric_name] = metric(y_test, y_test_pred)
 
                     # add the row at the end of the dataframe, and save it
-                    df_statistics.loc[len(df_statistics)] = fold_statistics
+                    df_fold = pd.DataFrame.from_dict(fold_statistics)
+                    df_statistics = pd.concat([df_statistics, df_fold], ignore_index=True)
                     df_statistics.to_csv(os.path.join(results_folder, results_file_name), index=False)
 
 
