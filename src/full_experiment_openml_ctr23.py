@@ -254,7 +254,7 @@ if __name__ == "__main__" :
                 if len(df_statistics[
                     (df_statistics["task_id"] == task_id) & 
                     (df_statistics["fold_id"] == fold_id) &
-                    (df_statistics["regressor_name"] == regressor_name)
+                    (df_statistics["regressor_name"].str.startswith(regressor_name)) # startswith because we have two rows for PySR
                     ]) != 0 :
                     
                     logger.info("- Fold information found in the dataframe, skipping...")
