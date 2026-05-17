@@ -4,16 +4,13 @@ Code refactoring to run the full experiment on the OpenML CTR23 benchmark suite.
 Improvements:
 - hyperparameter tuning using Optuna for the tree-based models
 - better logging
-- resuming from incomplete task results
+- resuming from incomplete per-fold task results
 
-TODO:
-- maybe it's better to actually save the results after each fold (!), with an extra column in the statistics
-for the fold id! Then, we can compute more complex statistics after the experiment is complete
 """
 
-import logging
 import numpy as np
 import openml
+import optuna
 import os
 import pandas as pd
 import pickle
@@ -25,9 +22,9 @@ from pysr import PySRRegressor
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, root_mean_squared_error
-from sklearn.model_selection import KFold, train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
+from tomlkit import key
 from xgboost import XGBRegressor
 
 # local imports
@@ -164,18 +161,46 @@ def perform_pysr_extra_steps(task_id, fold_id, regressor, X_val, y_val, X_test, 
 
     return fold_statistics
 
+def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, X_val, y_val) :
+    """
+    Objective function for Optuna hyperparameter tuning of the regressors.
+    """
+    # convert hyperparameters dictionary to the format expected by Optuna
+    params = {}
+    for key, value in hyperparameters[regressor_class.__name__].items() :
+        if isinstance(value, dict) and 'min' in value and 'max' in value :
+            # if the value is a dictionary with 'min' and 'max' keys, we use suggest_int or suggest_float
+            if isinstance(value['min'], int) and isinstance(value['max'], int) :
+                params[key] = trial.suggest_int(key, value['min'], value['max'])
+            elif isinstance(value['min'], float) and isinstance(value['max'], float) :
+                params[key] = trial.suggest_float(key, value['min'], value['max'])
+        elif isinstance(value, list) :
+            # if the value is a list, we use suggest_categorical
+            params[key] = trial.suggest_categorical(key, value)
+        else :
+            # otherwise, we keep the default value, it could be something like 'random_state' or 'n_jobs' that we want to keep fixed
+            params[key] = value
+    
+    model = regressor_class(**params)
+
+    model.fit(X_train, y_train)
+    y_val_pred = model.predict(X_val)
+    
+    return mean_squared_error(y_val, y_val_pred)
+
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260513/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260517_hyperparameter_tuning/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
     val_set_ratio = 0.2 # percentage of the training set to use as validation
-    perform_hyperparameter_tuning = False # whether to perform hyperparameter tuning for the tree-based models
+    perform_hyperparameter_tuning = True # whether to perform hyperparameter tuning for the tree-based models
+    min_time_for_tuning = 60 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
-    #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
+    regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
     metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
 
     # these are the default hyperparameters for the regressors
@@ -193,12 +218,31 @@ if __name__ == "__main__" :
     # another dictionary of values, to perform hyperparameter tuning with Optuna
     tuning_hyperparameters = {
         'RandomForestRegressor': {
-            'n_estimators' : [100, 200, 300], 
-            'max_depth' : [None, 10, 20]
+            'n_estimators' : {'min' : 100, 'max' : 5000}, 
+            'max_depth' : {'min' : 3, 'max' : 30},
+            'min_samples_split' : {'min' : 2, 'max' : 20},
+            'min_samples_leaf' : {'min' : 1, 'max' : 20},
+            'max_features' : {'min' : 0.1, 'max' : 1.0},
+            'n_jobs': -1,
+            'random_state' : random_seed,
             },
         'XGBRegressor': {
-            'n_estimators' : [100, 200, 300], 
-            'max_depth' : [None, 10, 20]
+            'n_estimators' : {'min' : 100, 'max' : 5000}, 
+            'max_depth' : {'min' : 3, 'max' : 30},
+            'min_leaves' : { 'min' : 0, 'max' : 64 },
+            'learning_rate' : {'min' : 0.001, 'max' : 0.3},
+            'subsample' : {'min' : 0.5, 'max' : 1.0},
+            'colsample_bytree' : {'min' : 0.5, 'max' : 1.0},
+            'colsample_bylevel' : {'min' : 0.5, 'max' : 1.0},
+            'min_child_weight' : {'min' : 1, 'max' : 20},
+            'gamma' : {'min' : 1e-8, 'max' : 10.0},
+            'reg_alpha' : {'min' : 1e-8, 'max' : 10.0},
+            'reg_lambda' : {'min' : 1e-8, 'max' : 10.0},
+            'booster' : ["gbtree", "dart"],
+            'grow_policy' : ["depthwise", "lossguide"],
+            'bootstrap' : True,
+            'n_jobs': -1,
+            'random_state' : random_seed,
             },
         'PySRRegressor': {
             'niterations' : 1000, 
@@ -251,7 +295,7 @@ if __name__ == "__main__" :
                 logger.info("Task %d, regressor %s, fold %d..." % (task_id, regressor_name, fold_id))
                 
                 # if the information for the task/regressor/fold combo is already in the dataframe, skip it
-                if len(df_statistics[
+                if len(df_statistics) > 0 and len(df_statistics[
                     (df_statistics["task_id"] == task_id) & 
                     (df_statistics["fold_id"] == fold_id) &
                     (df_statistics["regressor_name"].str.startswith(regressor_name)) # startswith because we have two rows for PySR
@@ -321,12 +365,45 @@ if __name__ == "__main__" :
                         mean_time_pysr = df_pysr["time_on_fold"].mean()
                         logger.info("- Mean time spent by PySRRegressor on folds of the same task: %.2f seconds" % mean_time_pysr)
 
-                        time_available_for_tuning = max(0, mean_time_pysr - time_on_fold)
+                        time_available_for_tuning = max(min_time_for_tuning, mean_time_pysr - time_on_fold)
                         logger.info("- Time available for tuning: %.2f seconds" % time_available_for_tuning)
 
-                        # TODO run Optuna hyperparameter tuning, with a timeout equal to the time available for tuning
+                        # run Optuna hyperparameter tuning, with a timeout equal to the time available for tuning
+                        if perform_hyperparameter_tuning :
+                            study = optuna.create_study(direction="minimize")
+                            # we use a lambda function to pass the additional arguments to the objective function
+                            study.optimize(
+                                lambda trial : optuna_objective(trial, tuning_hyperparameters, regressor_class, X_train, y_train, X_val, y_val), 
+                                timeout=time_available_for_tuning
+                                )
 
-                        # TODO check performance of the best hyperparameters on the test set, and update the metrics in the dataframe
+                            logger.info("- Best hyperparameters found: " + str(study.best_params))
+
+                            # now we can train a new model with the best hyperparameters
+                            best_hyperparameters = study.best_params
+                            best_hyperparameters["random_state"] = random_seed
+                            best_hyperparameters["n_jobs"] = -1
+
+                            regressor_tuned = regressor_class(**best_hyperparameters)
+                            regressor_tuned.fit(X_train, y_train)
+                            
+                            # evaluate the difference between base model and tuned model
+                            y_val_pred_tuned = regressor_tuned.predict(X_val)
+                            y_val_pred_default = regressor.predict(X_val)
+
+                            r2_tuned = r2_score(y_val, y_val_pred_tuned)
+                            r2_default = r2_score(y_val, y_val_pred_default)
+
+                            logger.info("- R2 on validation set with default hyperparameters: %.4f" % r2_default)
+                            logger.info("- R2 on validation set with tuned hyperparameters: %.4f" % r2_tuned)
+
+                            # check if the tuned model is better
+                            if r2_tuned > r2_default :
+                                logger.info("- Tuned model is better, using it to predict on the test set...")
+                                y_test_pred = regressor_tuned.predict(X_test)
+                                fold_statistics['time_on_fold'] = time_available_for_tuning # update the time on fold to include the time spent on tuning
+                            else :
+                                logger.info("- Tuned model is not better, keeping the default model for the test set...")
 
                         for metric_name, metric in metrics.items() :
                             fold_statistics[metric_name] = metric(y_test, y_test_pred)
