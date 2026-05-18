@@ -191,16 +191,16 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260517_hyperparameter_tuning/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260518_pysr_and_hyperparameter_tuning/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
     val_set_ratio = 0.2 # percentage of the training set to use as validation
     perform_hyperparameter_tuning = True # whether to perform hyperparameter tuning for the tree-based models
-    min_time_for_tuning = 60 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
+    min_time_for_tuning = 0 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
-    regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
+    #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
     metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
 
     # these are the default hyperparameters for the regressors
@@ -238,8 +238,8 @@ if __name__ == "__main__" :
             'gamma' : {'min' : 1e-8, 'max' : 10.0},
             'reg_alpha' : {'min' : 1e-8, 'max' : 10.0},
             'reg_lambda' : {'min' : 1e-8, 'max' : 10.0},
-            'booster' : ["gbtree", "dart"],
-            'grow_policy' : ["depthwise", "lossguide"],
+            #'booster' : ["gbtree", "dart"], # this can have a big impact on training time
+            #'grow_policy' : ["depthwise", "lossguide"], # this can also have a big impact on training time
             'bootstrap' : True,
             'n_jobs': -1,
             'random_state' : random_seed,
@@ -361,7 +361,9 @@ if __name__ == "__main__" :
 
                         # first step: check mean time spent by PySRRegressor on folds of the same task,
                         # and compute the total time available for hyperparameter tuning
-                        df_pysr = df_statistics[(df_statistics["task_id"] == task_id) & (df_statistics["regressor_name"] == "PySRRegressor")]
+                        df_pysr = df_statistics[
+                            (df_statistics["task_id"] == task_id) & (df_statistics["regressor_name"].str.startswith("PySRRegressor"))
+                            ]
                         mean_time_pysr = df_pysr["time_on_fold"].mean()
                         logger.info("- Mean time spent by PySRRegressor on folds of the same task: %.2f seconds" % mean_time_pysr)
 
@@ -372,6 +374,7 @@ if __name__ == "__main__" :
                         if perform_hyperparameter_tuning :
                             study = optuna.create_study(direction="minimize")
                             # we use a lambda function to pass the additional arguments to the objective function
+                            hypertuning_start_time = time.time()
                             study.optimize(
                                 lambda trial : optuna_objective(trial, tuning_hyperparameters, regressor_class, X_train, y_train, X_val, y_val), 
                                 timeout=time_available_for_tuning
@@ -393,15 +396,17 @@ if __name__ == "__main__" :
 
                             r2_tuned = r2_score(y_val, y_val_pred_tuned)
                             r2_default = r2_score(y_val, y_val_pred_default)
+                            time_on_fold_with_tuning = time.time() - hypertuning_start_time
 
                             logger.info("- R2 on validation set with default hyperparameters: %.4f" % r2_default)
                             logger.info("- R2 on validation set with tuned hyperparameters: %.4f" % r2_tuned)
+
+                            fold_statistics['time_on_fold'][-1] += time_on_fold_with_tuning # update the time on fold to include the time spent on tuning
 
                             # check if the tuned model is better
                             if r2_tuned > r2_default :
                                 logger.info("- Tuned model is better, using it to predict on the test set...")
                                 y_test_pred = regressor_tuned.predict(X_test)
-                                fold_statistics['time_on_fold'] = time_available_for_tuning # update the time on fold to include the time spent on tuning
                             else :
                                 logger.info("- Tuned model is not better, keeping the default model for the test set...")
 
