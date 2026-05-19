@@ -8,6 +8,8 @@ Improvements:
 
 """
 
+import json
+
 import numpy as np
 import openml
 import optuna
@@ -24,7 +26,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, root_mean_squared_error
 from sklearn.model_selection import train_test_split
 
-from tomlkit import key
 from xgboost import XGBRegressor
 
 # local imports
@@ -123,7 +124,15 @@ def perform_pysr_extra_steps(task_id, fold_id, regressor, X_val, y_val, X_test, 
     best_r2 = -np.inf
     
     for i in range(n_equations) :
-        r2_value = r2_score(y_val, regressor.predict(X_val, i))
+        # now, this could raise an exception, because PySR might generate
+        # equations including divisions by zero or square roots of negative numbers
+        try:
+            y_val_pred = regressor.predict(X_val, i)
+            r2_value = r2_score(y_val, regressor.predict(X_val, i))
+        except Exception as e:
+            logger.warning("Exception while predicting with equation index %d: %s" % (i, str(e)))
+            r2_value = -np.inf # if there is an error, the equation is bad
+        
         if r2_value > best_r2 :
             best_r2 = r2_value
             best_equation_index = i
@@ -154,9 +163,9 @@ def perform_pysr_extra_steps(task_id, fold_id, regressor, X_val, y_val, X_test, 
     df_pred_best.to_csv(os.path.join(results_folder, "PySRRegressor_validation_task_%d_fold_%d.csv" % (task_id, fold_id)), index=False)
 
     # save LaTeX representation of all equations
-    with open(os.path.join(results_folder, "equation_default_task_%d_fold_%d.tex" % (task_id, fold_id)), "w") as fp :
+    with open(os.path.join(results_folder, "PySRRegressor_default_equation_task_%d_fold_%d.tex" % (task_id, fold_id)), "w") as fp :
         fp.write(regressor.latex(default_equation_index))
-    with open(os.path.join(results_folder, "equation_best_task_%d_fold_%d.tex" % (task_id, fold_id)), "w") as fp :
+    with open(os.path.join(results_folder, "PySRRegressor_validation_equation_task_%d_fold_%d.tex" % (task_id, fold_id)), "w") as fp :
         fp.write(regressor.latex(best_equation_index))
 
     return fold_statistics
@@ -191,12 +200,12 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260518_pysr_and_hyperparameter_tuning/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260519_default/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
     val_set_ratio = 0.2 # percentage of the training set to use as validation
-    perform_hyperparameter_tuning = True # whether to perform hyperparameter tuning for the tree-based models
+    perform_hyperparameter_tuning = False # whether to perform hyperparameter tuning for the tree-based models
     min_time_for_tuning = 0 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
@@ -261,8 +270,17 @@ if __name__ == "__main__" :
         os.mkdir(results_folder)
     
     # save configuration for reproducibility
-    # TODO convert the dictionaries to JSON files
-    
+    with open(os.path.join(results_folder, "config.json"), "w") as f:
+        json.dump({
+            "random_seed": random_seed,
+            "val_set_ratio": val_set_ratio,
+            "perform_hyperparameter_tuning": perform_hyperparameter_tuning,
+            "regressor_classes": [cls.__name__ for cls in regressor_classes],
+            "metrics": [m for m in metrics],
+            "default_hyperparameters": default_hyperparameters,
+            "tuning_hyperparameters": tuning_hyperparameters
+        }, f, indent=4)
+
     # start logger
     logger = initialize_logging(results_folder, "full_experiment_openml_ctr23.log")
     logger.info("Starting full experiment on OpenML CTR23 benchmark suite...")
@@ -354,24 +372,24 @@ if __name__ == "__main__" :
                         fold_statistics = perform_pysr_extra_steps(task_id, fold_id, regressor, 
                             X_val, y_val, X_test, y_test, metrics, fold_statistics, results_folder, logger)
 
-                    elif perform_hyperparameter_tuning : 
-                        # otherwise, if the regressor is a tree-based model, we need to perform hyperparameter tuning using Optuna,
-                        # and then compute the metrics on the test set using the best hyperparameters
+                    else : 
+                        # otherwise, if the regressor is a tree-based model, we might need to
+                        # perform hyperparameter tuning using Optuna
                         logger.info("Performing extra steps for other regressors...")
-
-                        # first step: check mean time spent by PySRRegressor on folds of the same task,
-                        # and compute the total time available for hyperparameter tuning
-                        df_pysr = df_statistics[
-                            (df_statistics["task_id"] == task_id) & (df_statistics["regressor_name"].str.startswith("PySRRegressor"))
-                            ]
-                        mean_time_pysr = df_pysr["time_on_fold"].mean()
-                        logger.info("- Mean time spent by PySRRegressor on folds of the same task: %.2f seconds" % mean_time_pysr)
-
-                        time_available_for_tuning = max(min_time_for_tuning, mean_time_pysr - time_on_fold)
-                        logger.info("- Time available for tuning: %.2f seconds" % time_available_for_tuning)
 
                         # run Optuna hyperparameter tuning, with a timeout equal to the time available for tuning
                         if perform_hyperparameter_tuning :
+                            # first step: check mean time spent by PySRRegressor on folds of the same task,
+                            # and compute the total time available for hyperparameter tuning
+                            df_pysr = df_statistics[
+                                (df_statistics["task_id"] == task_id) & (df_statistics["regressor_name"].str.startswith("PySRRegressor"))
+                                ]
+                            mean_time_pysr = df_pysr["time_on_fold"].mean()
+                            logger.info("- Mean time spent by PySRRegressor on folds of the same task: %.2f seconds" % mean_time_pysr)
+
+                            time_available_for_tuning = max(min_time_for_tuning, mean_time_pysr - time_on_fold)
+                            logger.info("- Time available for tuning: %.2f seconds" % time_available_for_tuning)
+
                             study = optuna.create_study(direction="minimize")
                             # we use a lambda function to pass the additional arguments to the objective function
                             hypertuning_start_time = time.time()
@@ -410,8 +428,21 @@ if __name__ == "__main__" :
                             else :
                                 logger.info("- Tuned model is not better, keeping the default model for the test set...")
 
+                        # this part below is performed in any case for tree models, hyperparameter tuning or not
                         for metric_name, metric in metrics.items() :
                             fold_statistics[metric_name] = metric(y_test, y_test_pred)
+
+                        # save predictions of the model on the test set, as a CSV file
+                        df_pred = pd.DataFrame({'y_test' : y_test, 'y_test_pred' : y_test_pred})
+                        df_pred.to_csv(
+                            os.path.join(results_folder, "%s_task_%d_fold_%d.csv" % (regressor_name, task_id, fold_id)), 
+                            index=False)
+
+                    # this part is performed in any case for all regressors, after the extra steps for PySR and tree-based models;
+                    # we save the regressor object as a pickle file
+                    regressor_file_name = os.path.join(results_folder, "%s_task_%d_fold_%d.pkl" % (regressor_name, task_id, fold_id))
+                    with open(regressor_file_name, 'wb') as f :
+                        pickle.dump(regressor, f)
 
                     # add the row at the end of the dataframe, and save it
                     df_fold = pd.DataFrame.from_dict(fold_statistics)
