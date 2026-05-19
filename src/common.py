@@ -91,7 +91,7 @@ def corrected_std(differences, n_train, n_test):
     return corrected_std
 
 
-def compute_corrected_ttest(differences, df, n_train, n_test):
+def compute_corrected_ttest(differences, n_train, n_test, degrees_of_freedom=None):
     """
     Computes right-tailed paired t-test with corrected variance.
 
@@ -99,13 +99,14 @@ def compute_corrected_ttest(differences, df, n_train, n_test):
     ----------
     differences : array-like of shape (n_samples,)
         Vector containing the differences in the score metrics of two models.
-    df : int
-        Degrees of freedom.
     n_train : int
         Number of samples in the training set.
     n_test : int
         Number of samples in the testing set.
-
+    degrees_of_freedom : int or None
+        Degrees of freedom. If None, it is set to len(differences) - 1
+    
+        
     Returns
     -------
     t_stat : float
@@ -113,10 +114,13 @@ def compute_corrected_ttest(differences, df, n_train, n_test):
     p_val : float
         Variance-corrected p-value.
     """
+    if degrees_of_freedom is None :
+        degrees_of_freedom = len(differences) - 1
+
     mean = np.mean(differences)
     std = corrected_std(differences, n_train, n_test)
     t_stat = mean / std
-    p_val = t.sf(np.abs(t_stat), df)  # right-tailed t-test
+    p_val = t.sf(np.abs(t_stat), degrees_of_freedom)  # right-tailed t-test
     
     return t_stat, p_val
 
