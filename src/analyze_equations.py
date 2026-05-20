@@ -1,3 +1,4 @@
+import cma
 import numpy as np
 import re as regex
 import openml
@@ -52,7 +53,7 @@ def get_task_clean_data_and_name(task_id) :
         
     return df_X, df_y, dataset, task, missing_data, categorical_features
 
-def optimize_from_string(equation_str, X_data, y_data, initial_guess=None):
+def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, method="Nelder-Mead"):
     """
     Parses an equation string, automatically identifies 'x' variables and 'c' constants,
     and optimizes the constants against a dataset.
@@ -124,7 +125,11 @@ def optimize_from_string(equation_str, X_data, y_data, initial_guess=None):
         
     # 6. Run the optimization
     print("Optimizing parameters...")
-    result = minimize(objective_function, initial_guess, method='Nelder-Mead', options={'maxiter': 5000})
+    # instead of using Nelder-Mead, we can employ the good ol' CMA-ES
+    if method != 'CMA-ES' :
+        result = minimize(objective_function, initial_guess, method=method, options={'maxiter': 5000})
+    else :
+        x_best, result = cma.fmin2(objective_function, initial_guess, 1.0) #, options={'popsize' : 100})
     
     return result, constants
 
@@ -137,19 +142,26 @@ if __name__ == "__main__":
     my_equation_string = "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4"
     task_id = 361616
     guess = [2.0, 10, 1000.0, 100] # initial guess for the constant values, in order
+    method = 'Nelder-Mead'
 
     task_id = 361234
-    my_equation_string = "(c1 * x1 + c2 * x4 + c3 * x6 + c4 * x7) / (c5 * x5 + c6) + c7"
-    guess = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    #my_equation_string = "(c1 * x1 + c2 * x4 + c3 * x6 + c4 * x7 ) / (c5 * x5 + c6) + c7"
+    #my_equation_string = "c1 * x1 + c2 * x4 + c3 + (x3 + (x4 + x7 -x5 -x6)/(x5 + c5)) * c4"
+    #my_equation_string = "c8 * x6  + (c1 * x1 + c2 * x4 + c3 * x6 + c4 * x7)/(c5 * x5 + c6) + c7"
+    my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + c7 * x7 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
+    guess = None
+    method = 'CMA-ES'
 
     # load the appropriate dataset from the OpenML-CTR23 benchmark suite,
     # performing a bit of preprocessing
     df_X, df_y, dataset, task, missing_data, categorical_features = get_task_clean_data_and_name(task_id)
 
-    # the columns of X must match the variables in the equation, in **sorted** order
-    features = sorted(regex.findall("(x[0-9]+)", my_equation_string))
-    features = list(set(features))
-    print("Features used:", features)
+    # another way of identifying variables, more reliable; convert equation to symbolic,
+    # then extract free symbols as strings
+    expr = sp.parse_expr(my_equation_string)
+    all_symbols = expr.free_symbols
+    features = sorted([str(s) for s in all_symbols if str(s).startswith('x')])
+    print("Features extracted by sympy:", features)
 
     # however, we need to first rename (!) all the columns in the dataset, with an index starting from 1 (...)
     new_column_names = ["x%d" % i for i in range(1, len(df_X.columns)+1)]
@@ -162,20 +174,25 @@ if __name__ == "__main__":
         equation_str=my_equation_string,
         X_data=X,
         y_data=y,
-        initial_guess=guess
+        initial_guess=guess,
+        method=method
     )
     
     # Print out results dynamically
     print("\n=== Optimization Results ===")
-    print(f"Success: {fit_result.success}")
-    print(f"Final MSE Loss: {fit_result.fun:.6f}")
-    for param, value in zip(optimized_constants, fit_result.x) :
-        print(f"Optimized {param.name}: {value:.4e}")
+    best_x = None
+    if method != 'CMA-ES' :
+        print(f"Success: {fit_result.success}")
+        print(f"Final MSE Loss: {fit_result.fun:.6f}")
+        for param, value in zip(optimized_constants, fit_result.x) :
+            print(f"Optimized {param.name}: {value:.4e}")
+        best_x = fit_result.x
+    else :
+        best_x = fit_result.result.xbest
+        print(f"Final MSE Loss: {fit_result.result.fbest:.6f}")
 
     # Last part: replace constant values inside the equation
-    expr = sp.parse_expr(my_equation_string)
-    all_symbols = expr.free_symbols
-    for param, value in zip(optimized_constants, fit_result.x) :
+    for param, value in zip(optimized_constants, best_x) :
         expr = expr.subs(param, value)
     # let's check a thing manually
     #expr = expr.subs("c1", 2.7)
@@ -199,13 +216,13 @@ if __name__ == "__main__":
     print("Equation in LaTeX:", sp.latex(expr))
 
     # this is just a test with a highly personalized equation
-    personalized_equation = "-0.0323 + (0.711224454083269*x1 - 1.85365221986661*x4 - 0.00955415415405428*x5 + 0.0154799300186112*x6 + 2.04087575289272*x7)/(0.295765583621071*x5 + 0.0324193098237202)"
-    personalized_equation = "-0.0323031301921013 + (0.000204087575289272*x1 - 0.000185365221986661*x4 + 1.54799300186112e-6*x6 + 7.11224454083269e-5*x7)/(2.95765583621071e-5*x5 + 3.24193098237202e-6)"
+    personalized_equation = "-2 * x1 + x4 + 3.523 + (x3 + (x4 + x7 -x5 -x6)/(x5 + 0.143)) * 5.90"
     expr = sp.sympify(personalized_equation)
     print("Personalized equation:", expr)
     variables = sorted([s for s in expr.free_symbols if s.name.startswith('x')], key=lambda s: s.name)
     print("Variables of the personalized equation:", variables)
     lambdified_function = sp.lambdify(variables, expr, modules='numpy')
+    X = df_X[[str(v) for v in variables]].values
     y_pred = lambdified_function(*X.T)
     r2 = r2_score(y, y_pred)
     print("My highly personalized equation has R2=%.4f" % r2)

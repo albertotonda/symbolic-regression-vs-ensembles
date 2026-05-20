@@ -200,13 +200,14 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260519_default/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260519_hyperparameter_tuning_local/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
     val_set_ratio = 0.2 # percentage of the training set to use as validation
-    perform_hyperparameter_tuning = False # whether to perform hyperparameter tuning for the tree-based models
+    perform_hyperparameter_tuning = True # whether to perform hyperparameter tuning for the tree-based models
     min_time_for_tuning = 0 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
+    timeout_in_seconds = 1440 # timeout for the longer experiments, corresponding to 24 minutes
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
     #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
@@ -247,8 +248,8 @@ if __name__ == "__main__" :
             'gamma' : {'min' : 1e-8, 'max' : 10.0},
             'reg_alpha' : {'min' : 1e-8, 'max' : 10.0},
             'reg_lambda' : {'min' : 1e-8, 'max' : 10.0},
-            #'booster' : ["gbtree", "dart"], # this can have a big impact on training time
-            #'grow_policy' : ["depthwise", "lossguide"], # this can also have a big impact on training time
+            'booster' : ["gbtree", "dart"], # this can have a big impact on training time
+            'grow_policy' : ["depthwise", "lossguide"], # this can also have a big impact on training time
             'bootstrap' : True,
             'n_jobs': -1,
             'random_state' : random_seed,
@@ -256,12 +257,14 @@ if __name__ == "__main__" :
         'PySRRegressor': {
             'niterations' : 1000, 
             'population_size' : 100,
+            'maxsize' : 300,
             'binary_operators' : ["+", "-", "*", "/"],
             'unary_operators' : ["sin", "cos", "log", "exp"], 
             'temp_equation_file' : True,
             'random_state' : random_seed, 
             'procs' : None, 
-            'parallelism' : 'multiprocessing'
+            'parallelism' : 'multiprocessing',
+            'timeout_in_seconds' : timeout_in_seconds
             }
     }
 
@@ -338,9 +341,14 @@ if __name__ == "__main__" :
                     # otherwise, use the validation set to perform hyperparameter tuning
                     # using Optuna
                     
-                    # in any case, we start by using default hyperparameters
+                    # in any case, we start by using default hyperparameters, unless we are
+                    # in the special case where we are running hyperparameter tuning and the
+                    # regressor is PySRRegressor
                     regressor = regressor_class(**default_hyperparameters[regressor_name])
 
+                    if perform_hyperparameter_tuning and regressor_name == "PySRRegressor" :
+                        regressor = regressor_class(**tuning_hyperparameters[regressor_name])
+                        
                     # we need to measure the time spent on training
                     time_start = time.time()
                     regressor.fit(X_train, y_train)
