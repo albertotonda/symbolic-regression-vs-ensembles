@@ -3,6 +3,7 @@ import numpy as np
 import re as regex
 import openml
 import sympy as sp
+import sys
 
 from scipy.optimize import minimize
 from sklearn.metrics import r2_score
@@ -144,17 +145,15 @@ if __name__ == "__main__":
     guess = [2.0, 10, 1000.0, 100] # initial guess for the constant values, in order
     method = 'Nelder-Mead'
 
-    task_id = 361234
-    #my_equation_string = "(c1 * x1 + c2 * x4 + c3 * x6 + c4 * x7 ) / (c5 * x5 + c6) + c7"
-    #my_equation_string = "c1 * x1 + c2 * x4 + c3 + (x3 + (x4 + x7 -x5 -x6)/(x5 + c5)) * c4"
-    #my_equation_string = "c8 * x6  + (c1 * x1 + c2 * x4 + c3 * x6 + c4 * x7)/(c5 * x5 + c6) + c7"
-    my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + c7 * x7 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
-    guess = None
-    method = 'CMA-ES'
+    #task_id = 361234
+    #my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
+    #guess = None
+    #method = 'CMA-ES'
 
     # load the appropriate dataset from the OpenML-CTR23 benchmark suite,
     # performing a bit of preprocessing
     df_X, df_y, dataset, task, missing_data, categorical_features = get_task_clean_data_and_name(task_id)
+    print(dataset.name, df_X.shape)
 
     # another way of identifying variables, more reliable; convert equation to symbolic,
     # then extract free symbols as strings

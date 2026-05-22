@@ -125,8 +125,12 @@ def perform_pysr_extra_steps(task_id, fold_id, regressor, X_val, y_val, X_test, 
     
     for i in range(n_equations) :
         # now, this could raise an exception, because PySR might generate
-        # equations including divisions by zero or square roots of negative numbers
+        # equations including divisions by zero or square roots of negative numbers;
+        # so we need to catch the exception, and just to be sure we perform a prediction
+        # also on the test set (not used), because the test set could raise the exception
+        # even if the validation set does not
         try:
+            y_test_pred = regressor.predict(X_test, i)
             y_val_pred = regressor.predict(X_val, i)
             r2_value = r2_score(y_val, regressor.predict(X_val, i))
         except Exception as e:
@@ -343,7 +347,7 @@ if __name__ == "__main__" :
                     
                     # in any case, we start by using default hyperparameters, unless we are
                     # in the special case where we are running hyperparameter tuning and the
-                    # regressor is PySRRegressor
+                    # regressor is PySRRegressor, in that case we go with large populations etc.
                     regressor = regressor_class(**default_hyperparameters[regressor_name])
 
                     if perform_hyperparameter_tuning and regressor_name == "PySRRegressor" :
