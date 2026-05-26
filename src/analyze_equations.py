@@ -54,7 +54,7 @@ def get_task_clean_data_and_name(task_id) :
         
     return df_X, df_y, dataset, task, missing_data, categorical_features
 
-def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, method="Nelder-Mead"):
+def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, method="Nelder-Mead", silent=False):
     """
     Parses an equation string, automatically identifies 'x' variables and 'c' constants,
     and optimizes the constants against a dataset.
@@ -130,7 +130,7 @@ def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, metho
     if method != 'CMA-ES' :
         result = minimize(objective_function, initial_guess, method=method, options={'maxiter': 5000})
     else :
-        x_best, result = cma.fmin2(objective_function, initial_guess, 1.0) #, options={'popsize' : 100})
+        x_best, result = cma.fmin2(objective_function, initial_guess, 1.0, options={'verbose' : -1})
     
     return result, constants
 
@@ -138,6 +138,22 @@ def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, metho
 # EXAMPLE USAGE
 # ==========================================
 if __name__ == "__main__":
+
+    """
+    The script originally managed one task at the time, now I want to modify it so that:
+    1. it iterates over several tasks
+    2. performs a 10-fold cross-validation with the pre-computed folds
+    """
+
+    tasks = {
+        361616 : "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4",
+        361234 : "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB",
+        361622 : "c0 + c1 * (x1 - x14 + x16) + c2 * (x10 + x12 + x7) - (c3 * x0)/(c4 + c9 * x12 + c10 * x7) + c5 * exp(c6*x1 -x9*c7/sin(x2)) + c8*log(x0)"
+    }
+    method = 'CMA-ES'
+    guess = None
+    results = {}
+
     # Define your formula simply as a string!
     # No need to declare SymPy symbols beforehand.
     #my_equation_string = "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4"
@@ -145,88 +161,137 @@ if __name__ == "__main__":
     #guess = [2.0, 10, 1000.0, 100] # initial guess for the constant values, in order
     #method = 'Nelder-Mead'
 
-    task_id = 361234
-    my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
-    guess = None
-    method = 'CMA-ES'
+    #task_id = 361234
+    #my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
+    #guess = None
+    #method = 'CMA-ES'
 
     #task_id = 361622
     #my_equation_string = "c0 + c1 * (x1 - x14 + x16) + c2 * (x10 + x12 + x7) - (c3 * x0)/(c4 + c9 * x12 + c10 * x7) + c5 * exp(c6*x1 -x9*c7/sin(x2)) + c8*log(x0)"
     #guess = None
     #method = 'CMA-ES'
 
-    # load the appropriate dataset from the OpenML-CTR23 benchmark suite,
-    # performing a bit of preprocessing
-    df_X, df_y, dataset, task, missing_data, categorical_features = get_task_clean_data_and_name(task_id)
-    print(dataset.name, df_X.shape)
+    for task_id, my_equation_string in tasks.items() :
+        
+        # start preparing the results
+        results[task_id] = {'r2_whole_dataset' : 0.0, 'mean_r2' : 0.0, 'std_r2' : 0.0, 'expression_latex' : ""}
 
-    # another way of identifying variables, more reliable; convert equation to symbolic,
-    # then extract free symbols as strings
-    expr = sp.parse_expr(my_equation_string)
-    all_symbols = expr.free_symbols
-    features = sorted([str(s) for s in all_symbols if str(s).startswith('x')])
-    print("Features extracted by sympy:", features)
+        # load the appropriate dataset from the OpenML-CTR23 benchmark suite,
+        # performing a bit of preprocessing
+        df_X, df_y, dataset, task, missing_data, categorical_features = get_task_clean_data_and_name(task_id)
+        print("Now working with task %d, dataset \"%s\"..." % (task_id, dataset.name))
 
-    # however, we need to first rename (!) all the columns in the dataset, with an index starting from 1 (...)
-    new_column_names = ["x%d" % i for i in range(0, len(df_X.columns))]
-    df_X.columns = new_column_names
+        # another way of identifying variables, more reliable; convert equation to symbolic,
+        # then extract free symbols as strings
+        expr = sp.parse_expr(my_equation_string)
+        all_symbols = expr.free_symbols
+        features = sorted([str(s) for s in all_symbols if str(s).startswith('x')])
+        #print("Features extracted by sympy:", features)
 
-    X = df_X[features].values
-    y = df_y.values
+        # however, we need to first rename (!) all the columns in the dataset, with an index starting from 1 (...)
+        new_column_names = ["x%d" % i for i in range(0, len(df_X.columns))]
+        df_X.columns = new_column_names
 
-    fit_result, optimized_constants = optimize_from_string(
-        equation_str=my_equation_string,
-        X_data=X,
-        y_data=y,
-        initial_guess=guess,
-        method=method
-    )
-    
-    # Print out results dynamically
-    print("\n=== Optimization Results ===")
-    best_x = None
-    if method != 'CMA-ES' :
-        print(f"Success: {fit_result.success}")
-        print(f"Final MSE Loss: {fit_result.fun:.6f}")
-        for param, value in zip(optimized_constants, fit_result.x) :
-            print(f"Optimized {param.name}: {value:.4e}")
-        best_x = fit_result.x
-    else :
-        best_x = fit_result.result.xbest
-        print(f"Final MSE Loss: {fit_result.result.fbest:.6f}")
+        X = df_X[features].values
+        y = df_y.values
 
-    # Last part: replace constant values inside the equation
-    for param, value in zip(optimized_constants, best_x) :
-        expr = expr.subs(param, value)
-    # let's check a thing manually
-    #expr = expr.subs("c1", 2.7)
-    #expr = expr.subs("c2", 1000)
+        fit_result, optimized_constants = optimize_from_string(
+            equation_str=my_equation_string,
+            X_data=X,
+            y_data=y,
+            initial_guess=guess,
+            method=method
+        )
+        
+        # Print out results dynamically
+        print("\n=== Optimization Results ===")
+        best_x = None
+        if method != 'CMA-ES' :
+            print(f"Success: {fit_result.success}")
+            print(f"Final MSE Loss: {fit_result.fun:.6f}")
+            for param, value in zip(optimized_constants, fit_result.x) :
+                print(f"Optimized {param.name}: {value:.4e}")
+            best_x = fit_result.x
+        else :
+            best_x = fit_result.result.xbest
+            print(f"Final MSE Loss: {fit_result.result.fbest:.6f}")
 
-    print("Expression with best constant values:", expr)
-    variables = sorted([s for s in all_symbols if s.name.startswith('x')], key=lambda s: s.name)
-    lambdified_function = sp.lambdify(variables, expr, modules='numpy')
-    y_pred = lambdified_function(*X.T)
-    r2 = r2_score(y, y_pred)
-    print("R2 score of the equation with optimized constants: %.4f" % r2)
+        # Last part: replace constant values inside the equation
+        for param, value in zip(optimized_constants, best_x) :
+            expr = expr.subs(param, value)
+        # let's check a thing manually
+        #expr = expr.subs("c1", 2.7)
+        #expr = expr.subs("c2", 1000)
 
-    # small function stolen from stack overflow
-    # Source - https://stackoverflow.com/a/48491897
-    # Posted by user6655984, modified by community. See post 'Timeline' for change history
-    # Retrieved 2026-05-20, License - CC BY-SA 3.0
+        print("Dataset \"%s\", expression with best constant values: %s" % (dataset.name, str(expr)))
+        variables = sorted([s for s in all_symbols if s.name.startswith('x')], key=lambda s: s.name)
+        lambdified_function = sp.lambdify(variables, expr, modules='numpy')
+        y_pred = lambdified_function(*X.T)
+        r2 = r2_score(y, y_pred)
+        print("R2 score of the equation with constants optimized on the whole dataset: %.4f" % r2)
+        results[task_id]['r2_whole_dataset'] = r2
 
-    def round_expr(expr, num_digits):
-        return expr.xreplace({n : round(n, num_digits) for n in expr.atoms(sp.Number)})
+        # small function stolen from stack overflow
+        # Source - https://stackoverflow.com/a/48491897
+        # Posted by user6655984, modified by community. See post 'Timeline' for change history
+        # Retrieved 2026-05-20, License - CC BY-SA 3.0
 
-    print("Equation in LaTeX:", sp.latex(expr))
+        def round_expr(expr, num_digits):
+            return expr.xreplace({n : round(n, num_digits) for n in expr.atoms(sp.Number)})
+
+        print("Equation in LaTeX:", sp.latex(expr))
+        results[task_id]['expression_latex'] = sp.latex(expr)
+
+        print("Now performing a 10-fold cross-validation...")
+        r2_values_cv = []
+        for fold_id in range(0, 10) :
+            # get indices
+            train_index, test_index = task.get_train_test_split_indices(fold=fold_id)
+
+            # split the data
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+
+            # re-fit the equation
+            fit_result, optimized_constants = optimize_from_string(
+                equation_str=my_equation_string,
+                X_data=X_train,
+                y_data=y_train,
+                initial_guess=guess,
+                method=method,
+                silent=True
+            )
+
+            # compute R2 on the test set
+            for param, value in zip(optimized_constants, best_x) :
+                expr = expr.subs(param, value)
+            variables = sorted([s for s in all_symbols if s.name.startswith('x')], key=lambda s: s.name)
+            lambdified_function = sp.lambdify(variables, expr, modules='numpy')
+            y_test_pred = lambdified_function(*X_test.T)
+            r2_values_cv.append(r2_score(y_test, y_test_pred))
+
+        mean_r2 = np.mean(r2_values_cv)
+        std_r2 = np.std(r2_values_cv)
+        print("R2 after a 10-fold cross-validation: %.4f +/- %.4f" % (mean_r2, std_r2))
+        results[task_id]['mean_r2'] = mean_r2
+        results[task_id]['std_r2'] = std_r2
 
     # this is just a test with a highly personalized equation
-    personalized_equation = "-2 * x1 + x4 + 3.523 + (x3 + (x4 + x7 -x5 -x6)/(x5 + 0.143)) * 5.90"
-    expr = sp.sympify(personalized_equation)
-    print("Personalized equation:", expr)
-    variables = sorted([s for s in expr.free_symbols if s.name.startswith('x')], key=lambda s: s.name)
-    print("Variables of the personalized equation:", variables)
-    lambdified_function = sp.lambdify(variables, expr, modules='numpy')
-    X = df_X[[str(v) for v in variables]].values
-    y_pred = lambdified_function(*X.T)
-    r2 = r2_score(y, y_pred)
-    print("My highly personalized equation has R2=%.4f" % r2)
+    #personalized_equation = "-2 * x1 + x4 + 3.523 + (x3 + (x4 + x7 -x5 -x6)/(x5 + 0.143)) * 5.90"
+    #expr = sp.sympify(personalized_equation)
+    #print("Personalized equation:", expr)
+    #variables = sorted([s for s in expr.free_symbols if s.name.startswith('x')], key=lambda s: s.name)
+    #print("Variables of the personalized equation:", variables)
+    #lambdified_function = sp.lambdify(variables, expr, modules='numpy')
+    #X = df_X[[str(v) for v in variables]].values
+    #y_pred = lambdified_function(*X.T)
+    #r2 = r2_score(y, y_pred)
+    #print("My highly personalized equation has R2=%.4f" % r2)
+
+    # report the whole results
+    print("Final summary:")
+    for task_id in results :
+        print("Task %d:" % task_id)
+        print("- R2(whole)=%.4f, R2(cv)=%.4f +/- %.4f" %
+              (results[task_id]['r2_whole_dataset'], results[task_id]['mean_r2'], results[task_id]['std_r2']))  
+        print("- Expression=\"%s\"" % results[task_id]['expression_latex'])
