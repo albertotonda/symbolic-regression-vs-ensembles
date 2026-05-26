@@ -130,7 +130,7 @@ def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, metho
     if method != 'CMA-ES' :
         result = minimize(objective_function, initial_guess, method=method, options={'maxiter': 5000})
     else :
-        x_best, result = cma.fmin2(objective_function, initial_guess, 1.0, options={'verbose' : -1})
+        x_best, result = cma.fmin2(objective_function, initial_guess, 1.0, options={'popsize' : 1000, 'verbose' : -1})
     
     return result, constants
 
@@ -146,9 +146,10 @@ if __name__ == "__main__":
     """
 
     tasks = {
-        361616 : "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4",
-        361234 : "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB",
-        361622 : "c0 + c1 * (x1 - x14 + x16) + c2 * (x10 + x12 + x7) - (c3 * x0)/(c4 + c9 * x12 + c10 * x7) + c5 * exp(c6*x1 -x9*c7/sin(x2)) + c8*log(x0)"
+        #361616 : "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4",
+        #361234 : "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB",
+        #361622 : "c0 + c1 * (x1 - x14 + x16) + c2 * (x10 + x12 + x7) - (c3 * x0)/(c4 + c9 * x12 + c10 * x7) + c5 * exp(c6*x1 -x9*c7/sin(x2)) + c8*log(x0)",
+        361264 : "c0 * x4 + (c1 * x4)/(x1 - c2) + c3 * x3",
     }
     method = 'CMA-ES'
     guess = None
@@ -236,11 +237,12 @@ if __name__ == "__main__":
         # Posted by user6655984, modified by community. See post 'Timeline' for change history
         # Retrieved 2026-05-20, License - CC BY-SA 3.0
 
-        def round_expr(expr, num_digits):
+        def round_expr(expr, num_digits=3):
             return expr.xreplace({n : round(n, num_digits) for n in expr.atoms(sp.Number)})
 
-        print("Equation in LaTeX:", sp.latex(expr))
-        results[task_id]['expression_latex'] = sp.latex(expr)
+        rounded_equation_latex = sp.latex(round_expr(expr))
+        print("Equation in LaTeX:", rounded_equation_latex)
+        results[task_id]['expression_latex'] = rounded_equation_latex
 
         print("Now performing a 10-fold cross-validation...")
         r2_values_cv = []
