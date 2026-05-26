@@ -204,23 +204,31 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260519_hyperparameter_tuning_local/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260522_only_tree_models_5k_estimators/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
     val_set_ratio = 0.2 # percentage of the training set to use as validation
-    perform_hyperparameter_tuning = True # whether to perform hyperparameter tuning for the tree-based models
+    perform_hyperparameter_tuning = False # whether to perform hyperparameter tuning for the tree-based models
     min_time_for_tuning = 0 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
     timeout_in_seconds = 1440 # timeout for the longer experiments, corresponding to 24 minutes
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
-    #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
+    regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
     metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
 
     # these are the default hyperparameters for the regressors
     default_hyperparameters = {
-        'RandomForestRegressor': {'random_state' : random_seed, 'n_jobs' : -1},
-        'XGBRegressor': {'random_state' : random_seed, 'n_jobs' : -1},
+        'RandomForestRegressor': {
+            'n_estimators' : 5000,
+            'random_state' : random_seed, 
+            'n_jobs' : -1
+            },
+        'XGBRegressor': {
+            'n_estimators' : 5000,
+            'random_state' : random_seed, 
+            'n_jobs' : -1
+            },
         'PySRRegressor': {
             'temp_equation_file' : True,
             'random_state' : random_seed, 

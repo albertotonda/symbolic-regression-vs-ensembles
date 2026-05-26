@@ -140,13 +140,18 @@ def optimize_from_string(equation_str, X_data, y_data, initial_guess=None, metho
 if __name__ == "__main__":
     # Define your formula simply as a string!
     # No need to declare SymPy symbols beforehand.
-    my_equation_string = "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4"
-    task_id = 361616
-    guess = [2.0, 10, 1000.0, 100] # initial guess for the constant values, in order
-    method = 'Nelder-Mead'
+    #my_equation_string = "c1 * x4 + x5 * (c2 * x3 + c3 * x6) + c4"
+    #task_id = 361616
+    #guess = [2.0, 10, 1000.0, 100] # initial guess for the constant values, in order
+    #method = 'Nelder-Mead'
 
-    #task_id = 361234
-    #my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
+    task_id = 361234
+    my_equation_string = "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB" # try removing x7 at denominator
+    guess = None
+    method = 'CMA-ES'
+
+    #task_id = 361622
+    #my_equation_string = "c0 + c1 * (x1 - x14 + x16) + c2 * (x10 + x12 + x7) - (c3 * x0)/(c4 + c9 * x12 + c10 * x7) + c5 * exp(c6*x1 -x9*c7/sin(x2)) + c8*log(x0)"
     #guess = None
     #method = 'CMA-ES'
 
@@ -163,7 +168,7 @@ if __name__ == "__main__":
     print("Features extracted by sympy:", features)
 
     # however, we need to first rename (!) all the columns in the dataset, with an index starting from 1 (...)
-    new_column_names = ["x%d" % i for i in range(1, len(df_X.columns)+1)]
+    new_column_names = ["x%d" % i for i in range(0, len(df_X.columns))]
     df_X.columns = new_column_names
 
     X = df_X[features].values
