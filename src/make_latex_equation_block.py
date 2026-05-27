@@ -232,7 +232,7 @@ def split_latex_equation_v2(latex_str: str, max_chars: int = 60) -> str:
 if __name__ == "__main__" :
 
     # hard-coded values
-    task_id = 361264
+    task_id = 361272
     split_large_equations = False
 
     results_folder = "./latex"
