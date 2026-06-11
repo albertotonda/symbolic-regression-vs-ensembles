@@ -204,7 +204,7 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260522_only_tree_models_5k_estimators/" # I am assuming that the working directory is the root of the repository
+    results_folder = "results_20260605_task_361250/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
@@ -214,26 +214,31 @@ if __name__ == "__main__" :
     timeout_in_seconds = 1440 # timeout for the longer experiments, corresponding to 24 minutes
 
     regressor_classes = [PySRRegressor, RandomForestRegressor, XGBRegressor]
-    regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
+    #regressor_classes = [RandomForestRegressor, XGBRegressor] # faster, for debugging
     metrics = {'R2': r2_score, 'MSE': mean_squared_error, 'RMSE': root_mean_squared_error}
 
     # these are the default hyperparameters for the regressors
     default_hyperparameters = {
         'RandomForestRegressor': {
-            'n_estimators' : 5000,
+            'n_estimators' : 5000, # comment this, used for a single run
             'random_state' : random_seed, 
             'n_jobs' : -1
             },
         'XGBRegressor': {
-            'n_estimators' : 5000,
+            'n_estimators' : 5000, # comment this, used for a single run
             'random_state' : random_seed, 
             'n_jobs' : -1
             },
-        'PySRRegressor': {
-            'temp_equation_file' : True,
+        'PySRRegressor': { # NOTE: default hyperparameters have been altered for last-minute experiments, comment lines below
+            'elementwise_loss' : "loss(x, y) = max(x, 1e-8) - y + y * log(y / max(x, 1e-8))", # comment, Poisson loss used for ordinal regression
+            'binary_operators' : ["+", "-", "*", "/"], # comment this, used for a single run
+            'unary_operators' : ["sin", "cos", "log", "exp"], # comment this, used for a single run
+            'maxsize' : 60, # comment this, used for a single run
+            'niterations' : 1000, # comment this, used for a single run
             'random_state' : random_seed, 
             'procs' : None, 
-            'parallelism' : 'multiprocessing'
+            'parallelism' : 'multiprocessing',
+            'temp_equation_file' : True,
             }
     }
 
@@ -301,7 +306,8 @@ if __name__ == "__main__" :
     logger.info("Starting full experiment on OpenML CTR23 benchmark suite...")
 
     # get the list of task IDs to process, excluding the ones that are already completed
-    task_ids  = get_sorted_tasks_ids()
+    task_ids  = get_sorted_tasks_ids() # this stopped working, for some reason
+    task_ids = [361250] # debugging, just one task
     logger.info("Found " + str(len(task_ids)) + " tasks to process: " + str(task_ids))
 
     # prepare data structures, eventually reading the existing results file if it exists

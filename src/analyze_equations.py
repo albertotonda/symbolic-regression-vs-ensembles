@@ -150,7 +150,30 @@ if __name__ == "__main__":
         #361234 : "(c3 * x3 + c4 * x4 + c6 * x6 + cC)/(c5 * x5 + c71 * x7 + cA) + cB",
         #361622 : "c0 + c1 * (x1 - x14 + x16) + c2 * (x10 + x12 + x7) - (c3 * x0)/(c4 + c9 * x12 + c10 * x7) + c5 * exp(c6*x1 -x9*c7/sin(x2)) + c8*log(x0)",
         #361264 : "c0 * x4 + (c1 * x4)/(x1 - c2) + c3 * x3",
-        361272 : "c0*(x4-c1)*(x4-c2)*(x4-c3)*(x4-c4) + c5"
+        #361272 : "c0*(x4 - c1)*(x4 - c2)*(x4 - c3)*(x4 - c4) + c5",
+        #361257 : "(x0 - c0)*(c1*x3*(c2*x6 -c3*x2))", # this is using the validation set
+        #361257 : "(c1*x0 + c2)*(x6 + c3)*(c4*x3*(c5*x2 + c6*x6 + c7) + c8)", # and this is using the default choice of PySR
+        #361254 : "c0*x0 - x10 + c1*x14 + (c2*x14 + c3*x17)/x3 - c4*x7*x8 + c5",
+        #361256 : "(c0*x15 - c1*x17) + c2/(c3*x2 + 1/x20 + c4)",
+        #361617 : "c0*x4*(c1*x2 + c3*x6 + c4/(x0 - c5) + c6/(x7 - c7))",
+        #361236 : " c3*x0 + c4*x2 + c5*x3 + c6*x4 + c7*x5 + c8 + sin(c9*x0 + c10)*sin(x0) + c1*exp(c11*x2*cos(x5) + c12*x3 + c13*x6) + (c14*x0 + c15*x4)/(c16*x3 + c17*x5 + c18*x6 - c2)",
+        #361236 : "(c1*x0*x0 + c2*x0 + c3/(x0+c4) + c5*x4 + c6)*(c7*x3 -c8*x5 + c9/(c10-x5) + c11) + c12*x4 + c13",
+        #361236 : "sin(x0-c0)*((x3*c1) + exp((x5*x5*c2 + x5*c3 + c4)*(c5/(x6 + c6)) + c7)) + c8",
+        #361237 : "c0 + c1*x0 + c2*x1 + c3*x2 + c4*x4 + c5*x7 + (c6*x0 + c7*x1 + c8*x2)/(c9*x3 + c10) + c11*log(c12*x7 + c13) + c14*sin(c15*x1 + c16*x3) + c17*cos(c18*x1 + c19*x3)",
+        #361237 : "c0 + (c1*x0 + c2*x1 + c3*x2)/(c4*x3 + c5) + c6/(x7 + c7)",
+        #361237 : "c0 + (c1*x0 + c2*x1 + c3*x2)/(c4*x3 + c5 + c6*x7) + c8/(x7 + c9)",
+        #361258 : "c0 + c1*x0 + c2*x2 + c3*sin(c4*(x5 + x6) + (c5*x3 + c6*x4 + c6*x7))",
+        #361258 : "c0 + c2*x0 + c3*x2 + c4*x4 + c5*(x5 + x6 - x7) + c6*(x3 + c7 + (c8*x4 + c9)*(x5 + x6 - x7)) + c10*x5*x6 + c11*x4*x5",
+        #361258 : "c0 + c1*x0 + c2*x2 + c3*(c4*x2 + (c5*x3 + c6)*(x5 + x6 + c7) + c8*x4 + c9*(x0 + x5*x6))",
+        #361258 : "c0 + c1*x0 + c2*x2 + (c3*x3 + c4*x4 + c5*x7)*(x5 + x6)",
+        #361258 : "c0 + c1*(c2*x0 + c3*x2 + c4*x4 + c5*(x5 + x6 - x7) + c6*(x3 + c7 + (c8*x4 + c9)*(x5+x6-x7)) + c10*x5*x6 + c11*x4*x5 + c12)",
+        #361258 : "c0 + c1*x0 + c2*x2 + c3*x4 + c4*(c5*x3 + c6*x4 + c7)*(c8*cx5 + c9*x6 + c10*x7 + c11)",
+        #361258 : "c0 - (-x2 + x4 + (x3 + x4*(x5 + x6 - x7)/c2 + c3)*(x5 + x6 + c4)*c5)*c6",
+        #361258 : "c0 + c1*x0 + c2*sin(sin(c3 + c4*x0 + c5*x1 + c6*x2 + c7*x3 + c8*x4 + c9*x5 + c10*x6 + c11*x7 + c12*(x3 + x4)*x1))",
+        #361258 : "c0*x0 + c1*sin(x2) + c2*sin(x0*x2 - x0 + c3*x1 + c4*x2*x3 + c5*x2 + c6*x4*x3*x3 + c7*x4*x3 + c8*x4 + c9*x1 + c10*x3 + c11*x4 + c12*x5 + c13*x6 + c14*x7 + c15*x4*(0.799 - x2) + c16) + c17",
+        # warning: these two below can take A LOT of time
+        361258 : "c33*c18*(c15*(c0*x7 + c18*x7 + c18*(c20 + c23 + c7*(c43 + x1 + cos(x3)) + x7 + (c42 + c44*x4)*(c34 + c6*(c18*x1 + x2) + x2*c12))) + c25*c35**c18*(x2 + x7)*(c10*x4*(c18*x1 + x6) + c41) + x4 + cos(x4) + cos(c8*x3*(c0*c18*x4 + c24 + c31*x4)))*cos(c21*(c13*(c0*x6 + c18*x7) + c18*x5)) + c40*(c27*(c22*(c18*x1 + c37 + x4) + (c28*(c18*c29*(x2 + x5) + c36) + cos(c11 + (c26 + x0)*x2*c5 + x1*c19))*x0*c4 + cos(c1 + x2)*cos(c14*c18*(c18*x7 + c32 + x6) + c16 + c18*x6*c9 + c38 + x3 + x5)) + c39 + x2*c3 + sin(c0*(c18*(x0*(c2) + x6*(c17)) + c30 + x5)))",
+        #361258 : "c0*x1 + c1*x1*x2 + c11*sin(c18 + c20*x5 + c3*x0*(c5) + c3*x6*(c12)) + c15*x2 + c16*x1*x2 + c16*x1*x5 + c16*x10*x3 + c16*x10*x5 + c16*x2*x8 + c17*x4 + c19*x0 + c21*x3 + c23*x0*cos(c22*x9 + c9 + x0*x9 + x1*(c14)) + c23*cos(c4 + x2)*cos(c10*x7 + c13*6*(c8) + c24 + c26*x6 + x3 + x5) + c25*x5 + c28 + c29*x2*(c6) c43*(c0*x1 + c1*x2*x0*(c12) + c1*x5*x0*(c12) + c11*x2*x4*cos(c26*x5 + c27*x6 + c3*x7) + c14*sin(c25 + c29*x5 + c5*x0*(c8) + c5*x6*(c20)) + c15*cos(c26*x5 + c27*x6 + c3*x7) + c2*x1*cos(c26*x5 + c27*x6 + c3*x7) + c23*x4 + c24*x0*(c12) + c28*x2*cos(c26*x5 + c27*x6 + c3*x7) + c30*x0*(c12)*cos(c17 + c33*x2*(c13) + x0*x2*(c13) + x1*(c22)) + c30*cos(c7 + x2)*cos(c19*x7 + c21*x6*(c16) + c37 + c38*x6 + x3 + x5) + c31*x7*cos(c26*x5 + c27*x6 + c3*x7) + c32*x1*x4*cos(c26*x5 + c27*x6 + c3*x7) + c34 + c35*x2*(c10) + c36*x2*(c18)*cos(c26*x5 + c27*x6 + c3*x7) + c39*cos(x4)*cos(c26*x5 + c27*x6 + c3*x7) + c39*cos(c4*x3 + c40*x3*x4)*cos(c26*x5 + c27*x6 + c3*x7) + c41*x4*x2*(c18)*cos(c26*x5 + c27*x6 + c3*x7) + c42*x4*cos(c26*x5 + c27*x6 + c3*x7) + c6*x2*x4*(c21*x1 + x6)*cos(c26*x5 + c27*x6 + c3*x7) + c6*x7*x4*(c21*x1 + x6)*cos(c26*x5 + c27*x6 + c3*x7) + c9*cos(x3)*cos(c26*x5 + c27*x6 + c3*x7))+ c30*x2*x6 + c31*x4*x6 + c32*x1*x8 + c32*x4 + c32*x7*cos(x4) + c32*x7*cos(c2*x3 + c27*x3*x4) + c7*x2*cos(x3)",
     }
     method = 'CMA-ES'
     guess = None
@@ -243,7 +266,9 @@ if __name__ == "__main__":
 
         rounded_equation_latex = sp.latex(round_expr(expr))
         print("Equation in LaTeX:", rounded_equation_latex)
+        print("Original equation string:", sp.latex(expr))
         results[task_id]['expression_latex'] = rounded_equation_latex
+        results[task_id]['expression_latex_extended'] = sp.latex(expr)
 
         print("Now performing a 10-fold cross-validation...")
         r2_values_cv = []
@@ -276,6 +301,7 @@ if __name__ == "__main__":
         mean_r2 = np.mean(r2_values_cv)
         std_r2 = np.std(r2_values_cv)
         print("R2 after a 10-fold cross-validation: %.4f +/- %.4f" % (mean_r2, std_r2))
+        print("R2 values for each fold:", r2_values_cv)
         results[task_id]['mean_r2'] = mean_r2
         results[task_id]['std_r2'] = std_r2
 
@@ -298,3 +324,4 @@ if __name__ == "__main__":
         print("- R2(whole)=%.4f, R2(cv)=%.4f +/- %.4f" %
               (results[task_id]['r2_whole_dataset'], results[task_id]['mean_r2'], results[task_id]['std_r2']))  
         print("- Expression=\"%s\"" % results[task_id]['expression_latex'])
+        print("- Expression (extended)=\"%s\"" % results[task_id]['expression_latex_extended'])

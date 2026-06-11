@@ -232,7 +232,7 @@ def split_latex_equation_v2(latex_str: str, max_chars: int = 60) -> str:
 if __name__ == "__main__" :
 
     # hard-coded values
-    task_id = 361272
+    task_id = 361258
     split_large_equations = False
 
     results_folder = "./latex"
@@ -241,6 +241,7 @@ if __name__ == "__main__" :
     #source_folder = "results_server_hyperparameter_tuning_20260519"
     source_folder = "results_server_default_hyperparameters_20260519"
     source_filename_template = "PySRRegressor_validation_equation_task_%d_fold_([0-9]).tex" % task_id
+    #source_filename_template = "PySRRegressor_default_equation_task_%d_fold_([0-9]).tex" % task_id
 
     # let's start by creating the folder
     os.makedirs(results_folder, exist_ok=True)
