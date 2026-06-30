@@ -59,11 +59,12 @@ end
 
 # hard-coded values
 folds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-folds = [0]
-task_id = 361258
+#folds = [0] # for debugging
+task_id = 361267
 results_directory = "results_server_hyperparameter_tuning_20260519/"
+#results_directory = "results_server_default_hyperparameters_20260519/"
 output_directory = "latex/"
-output_file = output_directory * "simplified_julia_equations_task_$(task_id).tex"
+output_file = output_directory * "simplified_julia_equations_enhanced_hyperparameters_task_$(task_id).tex"
 
 # import the necessary Python packages
 pickle = pyimport("pickle")
@@ -106,31 +107,36 @@ for fold_id in folds
 
     end # end loop over rows
 
-    # now that we have the expression, let's work with it
-    for py_sym in selected_pyexpr.free_symbols
-        var_name = Symbol(pyconvert(String, py_sym.name))
-        Core.eval(@__MODULE__, :(@syms $var_name))
+    # for some weird reason, sometimes the expression is not found?!? TODO: check this
+    if selected_pyexpr != nothing
+        # now that we have the expression, let's work with it
+        for py_sym in selected_pyexpr.free_symbols
+            var_name = Symbol(pyconvert(String, py_sym.name))
+            Core.eval(@__MODULE__, :(@syms $var_name))
+        end
+
+        julia_str = pyconvert(String, sympy_printing.julia_code(selected_pyexpr))
+
+        julia_expr = Meta.parse(julia_str)
+        sym_utils_tree = Core.eval(@__MODULE__, julia_expr)
+
+        simplified = SymbolicUtils.simplify(sym_utils_tree)
+
+        println("Original: ", selected_equation_string)
+        println("Simplified: ", simplified)
+        println("---")
+
+        # convert the simplified string to LaTeX; need an intermediate
+        # conversion using SymbolicUtils.to_expr() to avoid issues
+        simplified_latex = latexify(SymbolicUtils.Code.toexpr(simplified), env=:raw)
+
+        # add this to the LaTeX block
+        global latex_string *= raw"\begin{align}" * "\n"
+        global latex_string *= "y = " * simplified_latex * "\n"
+        global latex_string *= raw"\end{align}" * "\n"
+    else
+        println("WARNING: Could not found the expression, skipping...")
     end
-
-    julia_str = pyconvert(String, sympy_printing.julia_code(selected_pyexpr))
-
-    julia_expr = Meta.parse(julia_str)
-    sym_utils_tree = Core.eval(@__MODULE__, julia_expr)
-
-    simplified = SymbolicUtils.simplify(sym_utils_tree)
-
-    println("Original: ", selected_equation_string)
-    println("Simplified: ", simplified)
-    println("---")
-
-    # convert the simplified string to LaTeX; need an intermediate
-    # conversion using SymbolicUtils.to_expr() to avoid issues
-    simplified_latex = latexify(SymbolicUtils.Code.toexpr(simplified), env=:raw)
-
-    # add this to the LaTeX block
-    global latex_string *= raw"\begin{align}" * "\n"
-    global latex_string *= "y = " * simplified_latex * "\n"
-    global latex_string *= raw"\end{align}" * "\n"
 end
 
 # finally, write the latex to file

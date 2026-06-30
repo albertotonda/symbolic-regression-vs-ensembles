@@ -172,8 +172,39 @@ if __name__ == "__main__":
         #361258 : "c0 + c1*x0 + c2*sin(sin(c3 + c4*x0 + c5*x1 + c6*x2 + c7*x3 + c8*x4 + c9*x5 + c10*x6 + c11*x7 + c12*(x3 + x4)*x1))",
         #361258 : "c0*x0 + c1*sin(x2) + c2*sin(x0*x2 - x0 + c3*x1 + c4*x2*x3 + c5*x2 + c6*x4*x3*x3 + c7*x4*x3 + c8*x4 + c9*x1 + c10*x3 + c11*x4 + c12*x5 + c13*x6 + c14*x7 + c15*x4*(0.799 - x2) + c16) + c17",
         # warning: these two below can take A LOT of time
-        361258 : "c33*c18*(c15*(c0*x7 + c18*x7 + c18*(c20 + c23 + c7*(c43 + x1 + cos(x3)) + x7 + (c42 + c44*x4)*(c34 + c6*(c18*x1 + x2) + x2*c12))) + c25*c35**c18*(x2 + x7)*(c10*x4*(c18*x1 + x6) + c41) + x4 + cos(x4) + cos(c8*x3*(c0*c18*x4 + c24 + c31*x4)))*cos(c21*(c13*(c0*x6 + c18*x7) + c18*x5)) + c40*(c27*(c22*(c18*x1 + c37 + x4) + (c28*(c18*c29*(x2 + x5) + c36) + cos(c11 + (c26 + x0)*x2*c5 + x1*c19))*x0*c4 + cos(c1 + x2)*cos(c14*c18*(c18*x7 + c32 + x6) + c16 + c18*x6*c9 + c38 + x3 + x5)) + c39 + x2*c3 + sin(c0*(c18*(x0*(c2) + x6*(c17)) + c30 + x5)))",
+        #361258 : "c33*c18*(c15*(c0*x7 + c18*x7 + c18*(c20 + c23 + c7*(c43 + x1 + cos(x3)) + x7 + (c42 + c44*x4)*(c34 + c6*(c18*x1 + x2) + x2*c12))) + c25*c35**c18*(x2 + x7)*(c10*x4*(c18*x1 + x6) + c41) + x4 + cos(x4) + cos(c8*x3*(c0*c18*x4 + c24 + c31*x4)))*cos(c21*(c13*(c0*x6 + c18*x7) + c18*x5)) + c40*(c27*(c22*(c18*x1 + c37 + x4) + (c28*(c18*c29*(x2 + x5) + c36) + cos(c11 + (c26 + x0)*x2*c5 + x1*c19))*x0*c4 + cos(c1 + x2)*cos(c14*c18*(c18*x7 + c32 + x6) + c16 + c18*x6*c9 + c38 + x3 + x5)) + c39 + x2*c3 + sin(c0*(c18*(x0*(c2) + x6*(c17)) + c30 + x5)))",
         #361258 : "c0*x1 + c1*x1*x2 + c11*sin(c18 + c20*x5 + c3*x0*(c5) + c3*x6*(c12)) + c15*x2 + c16*x1*x2 + c16*x1*x5 + c16*x10*x3 + c16*x10*x5 + c16*x2*x8 + c17*x4 + c19*x0 + c21*x3 + c23*x0*cos(c22*x9 + c9 + x0*x9 + x1*(c14)) + c23*cos(c4 + x2)*cos(c10*x7 + c13*6*(c8) + c24 + c26*x6 + x3 + x5) + c25*x5 + c28 + c29*x2*(c6) c43*(c0*x1 + c1*x2*x0*(c12) + c1*x5*x0*(c12) + c11*x2*x4*cos(c26*x5 + c27*x6 + c3*x7) + c14*sin(c25 + c29*x5 + c5*x0*(c8) + c5*x6*(c20)) + c15*cos(c26*x5 + c27*x6 + c3*x7) + c2*x1*cos(c26*x5 + c27*x6 + c3*x7) + c23*x4 + c24*x0*(c12) + c28*x2*cos(c26*x5 + c27*x6 + c3*x7) + c30*x0*(c12)*cos(c17 + c33*x2*(c13) + x0*x2*(c13) + x1*(c22)) + c30*cos(c7 + x2)*cos(c19*x7 + c21*x6*(c16) + c37 + c38*x6 + x3 + x5) + c31*x7*cos(c26*x5 + c27*x6 + c3*x7) + c32*x1*x4*cos(c26*x5 + c27*x6 + c3*x7) + c34 + c35*x2*(c10) + c36*x2*(c18)*cos(c26*x5 + c27*x6 + c3*x7) + c39*cos(x4)*cos(c26*x5 + c27*x6 + c3*x7) + c39*cos(c4*x3 + c40*x3*x4)*cos(c26*x5 + c27*x6 + c3*x7) + c41*x4*x2*(c18)*cos(c26*x5 + c27*x6 + c3*x7) + c42*x4*cos(c26*x5 + c27*x6 + c3*x7) + c6*x2*x4*(c21*x1 + x6)*cos(c26*x5 + c27*x6 + c3*x7) + c6*x7*x4*(c21*x1 + x6)*cos(c26*x5 + c27*x6 + c3*x7) + c9*cos(x3)*cos(c26*x5 + c27*x6 + c3*x7))+ c30*x2*x6 + c31*x4*x6 + c32*x1*x8 + c32*x4 + c32*x7*cos(x4) + c32*x7*cos(c2*x3 + c27*x3*x4) + c7*x2*cos(x3)",
+        #361259 : "c0*cos(x4)*(x15 + c2*sin(x2) + c3*x4 + c4)",
+        #361259 : "c0*cos(x4)*x15 + c1",
+        #361258 : "c0 + c1*(c2*x2 + c3*x0 + c4*x4 + (x5 + x6 + c5*x7 + c6)*(x3 + c7*x4*x5 + c8*x4 + c9))",
+        #361258 : "c0 + c1*x0 + c2*x1 + c3*x2 + c4*x4 + c28*exp(x0) + c5*sin(c6 + c7*x1 + c8*x2 + c9*x3 + c10*x5 + c11*x6 + c12*x7) + c13*cos(c14 + c15*x3 + c16*x5 + c17*x6 + c18*x7) + c24*(c25*x5 + c26*x6 + c19*x7 + c20)*(c27*x3 + c21*x4*x5 + c22*x4 + c23)",
+        #361258 : "c0 + c1*(c2*x2 + c3*x0 + c4*x4 + (x5 + x6 + c5*x7 + c6)*(x3 + c7*x4*x5 + c8*x4 + c9)) + c10 * sin(c11 + c12*x1 + c13*x2 + c14*x3 + c15*x5 + c16*x6 + c17*x7) + c18 * cos(c19 + c20*x3 + c21*x5 + c22*x6 + c23*x7)",
+        #361267 : "c1*x3 + x8 + c2*x0 + c3*x4 + c4*x7 + c0",
+        #361267 : "x8 + c1*x3 + c2*x0 + c3*x4 + c0",
+        #361260 : "c0 + c1*x2 + c2*x3 + c3*x4 + c4*x5 + c5*x9 + c6*x10 + c7*x14*(x3 + c8) + c9*exp(c10*x14) + (c15*x0 + c16*x3 + c17*x7)/(c11*x8*cos(c12*x1+c13) + c14)",
+        #361260 : "c0 + c1*x2 + c2*x3 + c3*x4 + c4*x5 + c5*x9 + c6*x10 + c7*x14*(x3 + c8) + c9*exp(c10*x14)",
+        #361242 : "c0 + c1*x15 + c2*x25 + (c3*x70*x9 + c4*x70*x56 + c5)/(c6*c44*x72 + c7*x73 + c8)",
+        #361242 : "c0 + c1*x15 + c2*x25 + (c3*x70*x9 + c5)/(c6*c44*x72 + c7*x73 + c8)",
+        #361242 : "c0 + c1*x25 + c2*x77 + c3*x25*x77 + c4*x66 + (x70 * (c5*x9 + c6*x27 + c7) + c8*x9 + c9*x27)/((c10*x72 + c11)*(c12*x73 + c13) + c14*x44 + c15)",
+        #361258 : "c0 + c1 * (c2*x0 + c3*x2 + c4*x4 + (c5*x5 + c6*x6 + c7*x7)*(c8*x3 + c9*x4 + c10))",
+        #361258 : "c0 + c1*x0 + c2*x2 + c3*cos(c4*x2 + c5*x4 + c6*sin(c7*x5 + c8*x6 + c9*x7 + c10*exp(x0) + c11*exp(x7) + c12*x3*x4 + c14) + c15)",
+        #361258 : "c0 + c1*x0 + c2*x1 + c3*x2 + c4*x4 + c5*sin(c6 + c7*x1 + c8*x2 + c9*x3 + c10*x5 + c11*x6 + c12*x7) + c13*cos(c14 + c15*x3 + c16*x5 + c17*x6 + c18*x7) + c24*(c25*x5 + c26*x6 + c19*x7 + c20)*(c27*x3 + c21*x4*x5 + c22*x4 + c23)",
+        #361247 : "c0 + c1*x8 + c2*x11 + (c3*x11 + c4)/ (x8* (c5*x9 + c6) + c7)",
+        #361247 : "c0 + c1*x8 + c2*x10 + c3*x11 + (c4*x11 + c5)/(x8*(c6*x9 + c7) + c8)",
+        #361251 : "c0*sin( c1*sin( c11*sin( (c2 * exp(c3*x11) * log(c4*x2 + c5))/(c6*x0 + c7) + c8*x1*x9 + c9*x10*x3 + c10 ) ) )", # 0.57
+        #361251 : "c0*sin( c1*sin( c2*x9 + c3*x2*x8 + c4*x3*x11 ) )", # 0.2327
+        #361251 : "c0*sin( c1*sin( c11*sin( (c2 * exp(c3*x11) * log(c4*x2 + c5))/(c6*x0 + c7) + c8*x1*x9 + c9*x10*x3 + c11*x8 + c10 ) ) )", # 0.65
+        #361251 : "c0*sin( c1*sin( (c2 * exp(c3*x11) * log(c4*x2 + c5))/(c6*x0 + c7) + c8*x1*x9 + c9*x10*x3 + c11*x8 + c10 ) )", # 0.65
+        #361252 : "c0 + (c1*x16*pow(x13, c2) - c3)/(x13 + c4 + c5*x16/x14)", # R2(whole)=0.7871, R2(cv)=0.7872 +/- 0.0113
+        #361252 : "c0 + (c1*x16*pow(x13, 3) - c3)/(x13 + c4 + c5*x16/x14)",
+        #361253 : "c0 + c1*x32 + c2*x33 + c3*x34 + c4*x35 + c5*x36 + c6*x37 + c7*x38 + c8*x39 + c9*x40 + c10*x41 + c11*x42 + c12*x43 + c13*x44 + c14*x45 + c15*x46 + c16*x47",
+        #361266 : "c0 + c1*x12 + c2*x2 + c3*x6*x8 + c4*exp(c5*x6 + c6*x7) + c7*sin(c8*x14 + c9) + c10*log(c11*x2) + (c12*x1 + c13)/(c14*x8 + x13 - x14)",
+        #361266 : "c0 + c1*x12 + c2*x2 + c3*x6*x8 + c7*sin(c8*x14 + c9) + (c12*x1 + c13)/(c14*x8 + c15*x13 + c16*x14)",
+        #361266 : "c0 + c1*x12 + c2*x11 + (x2 + c3*x5 + c4*x14 + c5)*(c6*x6 + c7*x8 + c10*sin(c11/x14 + c12) + c9)",
+        #361266 : "x8*(1 - c0/x14)*(c1*x14/x2 + c2*x5 + c3*x12 + c4*x6 + x2*(c5*sin(c6/x14) + c7) + c8)",
+        #361266 : "x8*(c0 - c1/x14)*(c2*(x14/x2 + x5) + x12 + c3*x2*(sin(c4/c14) + x6 + c5))",
+        #361268 : "c0 + c1*x1 + c2*x20 + c3*x29 + c4*x30 + c5*cos(c6*sin(c7*x36 + c8)) + c9/(c10 - x36) + c11/x38", # 0.6439
+        361268 : "c0 + c1*x1 + c2*x20 + c3*x29 + c4*x30 + c5/(x36-c6) + c7/(x36-c8) + c9*x38*x38 + c15*x38*x30 + c10/x38 + c11*cos(c12*sin(c13*x36 + c14))", # 0.7069
     }
     method = 'CMA-ES'
     guess = None
@@ -273,6 +304,7 @@ if __name__ == "__main__":
         print("Now performing a 10-fold cross-validation...")
         r2_values_cv = []
         for fold_id in range(0, 10) :
+            print("\n\nWorking on fold %d..." % fold_id)
             # get indices
             train_index, test_index = task.get_train_test_split_indices(fold=fold_id)
 
