@@ -2,7 +2,9 @@ import datetime
 import logging
 import numpy as np
 import os
+import pandas as pd
 
+from itertools import combinations
 from logging.handlers import RotatingFileHandler
 from scipy.stats import t
 
@@ -154,3 +156,266 @@ def holm_bonferroni(p_values, alpha=0.05):
             break
             
     return reject
+
+# other two functions written by Gemini, to perform Nadeau-Bengio corrected TOST equivalence
+def check_tost_equivalence(r2_list1, r2_list2, margin, alpha=0.05, cv_correction=True):
+    """
+    Performs a Two One-Sided Tests (TOST) for equivalence on two paired lists of R2 values.
+    
+    Parameters:
+    - r2_list1, r2_list2: paired lists/arrays of R2 values of length k
+    - margin: equivalence margin (Delta)
+    - alpha: significance level (default 0.05)
+    - cv_correction: bool, whether to apply Nadeau-Bengio correction (default True)
+    """
+    if len(r2_list1) != len(r2_list2):
+        raise ValueError("The two lists must have the same size (k).")
+        
+    k = len(r2_list1)
+    
+    d = np.array(r2_list1) - np.array(r2_list2)
+    mean_d = np.mean(d)
+    sd = np.std(d, ddof=1)
+    
+    # Calculate Standard Error
+    if cv_correction:
+        # Standard k-fold CV ratio: n_test / n_train = 1 / (k - 1)
+        se = np.sqrt((1 / k + 1 / (k - 1))) * sd
+    else:
+        se = sd / np.sqrt(k)
+        
+    if se == 0:
+        is_equivalent = -margin < mean_d < margin
+        return is_equivalent, 0.0 if is_equivalent else 1.0
+
+    t1 = (mean_d - (-margin)) / se
+    t2 = (mean_d - margin) / se
+    df = k - 1
+    
+    p1 = t.sf(t1, df)  # Right-tail for H01: mean_d <= -margin
+    p2 = t.cdf(t2, df) # Left-tail for H02: mean_d >= margin
+    
+    p_val = max(p1, p2)
+    is_equivalent = p_val < alpha
+    
+    return is_equivalent, float(p_val)
+
+
+def pairwise_tost_holm(methods_dict, margin, alpha=0.05, cv_correction=True):
+    """
+    Performs pairwise TOST equivalence tests across M methods with Holm-Bonferroni correction.
+    """
+    method_names = list(methods_dict.keys())
+    pairs = list(combinations(method_names, 2))
+    results = []
+    raw_p_values = []
+    
+    for m1, m2 in pairs:
+        r2_1 = methods_dict[m1]
+        r2_2 = methods_dict[m2]
+        
+        mean_diff = np.mean(np.array(r2_1) - np.array(r2_2))
+        
+        _, p_val = check_tost_equivalence(
+            r2_1, r2_2, 
+            margin=margin, 
+            alpha=alpha, 
+            cv_correction=cv_correction
+        )
+        
+        results.append({
+            'Pair': f"{m1} vs {m2}",
+            'Mean Diff (M1 - M2)': mean_diff,
+            'p_raw': p_val
+        })
+        raw_p_values.append(p_val)
+        
+    # Holm-Bonferroni Step-Down Correction
+    m = len(results)
+    sorted_indices = sorted(range(m), key=lambda i: raw_p_values[i])
+    
+    adj_p_values = [0.0] * m
+    running_max = 0.0
+    
+    for rank, idx in enumerate(sorted_indices):
+        raw_p = raw_p_values[idx]
+        multiplier = m - rank
+        unadjusted_adj_p = raw_p * multiplier
+        
+        running_max = max(running_max, unadjusted_adj_p)
+        adj_p_values[idx] = min(1.0, running_max)
+        
+    for i, res in enumerate(results):
+        res['p_adjusted'] = adj_p_values[i]
+        res['Is Equivalent'] = adj_p_values[i] < alpha
+
+    return pd.DataFrame(results)[['Pair', 'Mean Diff (M1 - M2)', 'p_raw', 'p_adjusted', 'Is Equivalent']]
+
+import numpy as np
+import pandas as pd
+from scipy.stats import t
+from itertools import combinations
+
+def compute_sbe(r2_list1, r2_list2, alpha=0.05, cv_correction=True):
+    """
+    Calculates the Smallest Bound of Equivalence (SBE) between two paired lists of R2 values.
+    
+    Parameters:
+    - r2_list1, r2_list2: paired lists/arrays of R2 fold values (length k)
+    - alpha: significance level (default 0.05)
+    - cv_correction: bool, whether to apply Nadeau-Bengio correction (default True)
+    
+    Returns:
+    - sbe: float, the minimum equivalence margin Delta needed to claim equivalence at level alpha.
+    """
+    if len(r2_list1) != len(r2_list2):
+        raise ValueError("The two lists must have the same size (k).")
+        
+    k = len(r2_list1)
+    if k < 2:
+        raise ValueError("At least 2 folds are required.")
+        
+    d = np.array(r2_list1) - np.array(r2_list2)
+    mean_d = np.mean(d)
+    sd = np.std(d, ddof=1)
+    
+    # Calculate Standard Error
+    if cv_correction:
+        se = np.sqrt((1 / k + 1 / (k - 1))) * sd
+    else:
+        se = sd / np.sqrt(k)
+        
+    df = k - 1
+    # Critical value for 1-alpha quantile of Student's t
+    t_crit = t.ppf(1 - alpha, df)
+    
+    # Exact SBE formula
+    sbe = np.abs(mean_d) + t_crit * se
+    return float(sbe)
+
+
+def pairwise_sbe(methods_dict, alpha=0.05, cv_correction=True, adjust_bonferroni=True):
+    """
+    Computes pairwise SBE across M methods.
+    
+    Parameters:
+    - methods_dict: dict mapping method names to lists/arrays of R2 fold scores.
+    - alpha: float, target significance level (default 0.05)
+    - cv_correction: bool, apply Nadeau-Bengio CV correction
+    - adjust_bonferroni: bool, adjust alpha for multiple comparisons across all pairs (alpha / m)
+    
+    Returns:
+    - pandas.DataFrame containing mean differences and SBE values.
+    """
+    method_names = list(methods_dict.keys())
+    pairs = list(combinations(method_names, 2))
+    m = len(pairs)
+    
+    # Optional Bonferroni correction on alpha across m comparisons
+    effective_alpha = (alpha / m) if adjust_bonferroni else alpha
+    
+    results = []
+    for m1, m2 in pairs:
+        r2_1 = methods_dict[m1]
+        r2_2 = methods_dict[m2]
+        
+        mean_diff = np.mean(np.array(r2_1) - np.array(r2_2))
+        sbe_val = compute_sbe(r2_1, r2_2, alpha=effective_alpha, cv_correction=cv_correction)
+        
+        results.append({
+            'Pair': f"{m1} vs {m2}",
+            'Mean Diff (M1 - M2)': mean_diff,
+            'Abs Mean Diff': np.abs(mean_diff),
+            f'SBE (alpha={effective_alpha:.4f})': sbe_val
+        })
+        
+    return pd.DataFrame(results)
+
+# other two functions written by Gemini; this time, we compute the Smallest Bound of Equivalence
+# between different methods
+def compute_sbe(r2_list1, r2_list2, alpha=0.05, cv_correction=True):
+    """
+    Calculates the Smallest Bound of Equivalence (SBE) between two paired lists of R2 values.
+    """
+    if len(r2_list1) != len(r2_list2):
+        raise ValueError("The two lists must have the same size (k).")
+        
+    k = len(r2_list1)
+    d = np.array(r2_list1) - np.array(r2_list2)
+    mean_d = np.mean(d)
+    sd = np.std(d, ddof=1)
+    
+    if cv_correction:
+        se = np.sqrt((1 / k + 1 / (k - 1))) * sd
+    else:
+        se = sd / np.sqrt(k)
+        
+    df = k - 1
+    t_crit = t.ppf(1 - alpha, df)
+    
+    sbe = np.abs(mean_d) + t_crit * se
+    return float(sbe)
+
+
+def pairwise_sbe_holm(methods_dict, alpha=0.05, cv_correction=True):
+    """
+    Computes pairwise Smallest Bound of Equivalence (SBE) across M methods 
+    using a step-down Holm-Bonferroni adjustment.
+    
+    Parameters:
+    - methods_dict: dict mapping method names to lists/arrays of R2 fold scores.
+    - alpha: float, overall family-wise significance level (default 0.05)
+    - cv_correction: bool, apply Nadeau-Bengio CV correction (default True)
+    
+    Returns:
+    - pandas.DataFrame containing mean differences, raw SBE, and Holm-adjusted SBE.
+    """
+    method_names = list(methods_dict.keys())
+    pairs = list(combinations(method_names, 2))
+    m = len(pairs)
+    
+    # 1. Compute raw SBE at nominal alpha for all pairs
+    raw_sbe_data = []
+    for m1, m2 in pairs:
+        r2_1 = methods_dict[m1]
+        r2_2 = methods_dict[m2]
+        mean_diff = np.mean(np.array(r2_1) - np.array(r2_2))
+        sbe_raw = compute_sbe(r2_1, r2_2, alpha=alpha, cv_correction=cv_correction)
+        
+        raw_sbe_data.append({
+            'Pair': f"{m1} vs {m2}",
+            'r2_1': r2_1,
+            'r2_2': r2_2,
+            'Mean Diff': mean_diff,
+            'SBE_raw': sbe_raw
+        })
+        
+    # 2. Sort pairs by raw SBE (smallest SBE = rank 0, strongest equivalence)
+    sorted_indices = sorted(range(m), key=lambda i: raw_sbe_data[i]['SBE_raw'])
+    
+    holm_sbe_results = [0.0] * m
+    running_max_sbe = 0.0
+    
+    # 3. Apply Holm-Bonferroni step-down alpha allocation
+    for rank, idx in enumerate(sorted_indices):
+        item = raw_sbe_data[idx]
+        alpha_j = alpha / (m - rank)  # Step-down alpha
+        
+        # Calculate SBE with adjusted alpha
+        sbe_step = compute_sbe(item['r2_1'], item['r2_2'], alpha=alpha_j, cv_correction=cv_correction)
+        
+        # Enforce monotonicity across ranks
+        running_max_sbe = max(running_max_sbe, sbe_step)
+        holm_sbe_results[idx] = running_max_sbe
+        
+    # 4. Construct output DataFrame
+    results = []
+    for i, item in enumerate(raw_sbe_data):
+        results.append({
+            'Pair': item['Pair'],
+            'Mean Diff (M1 - M2)': item['Mean Diff'],
+            f'SBE Raw (alpha={alpha})': item['SBE_raw'],
+            f'SBE Holm (alpha={alpha})': holm_sbe_results[i]
+        })
+        
+    return pd.DataFrame(results)

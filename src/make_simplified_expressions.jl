@@ -60,7 +60,7 @@ end
 # hard-coded values
 folds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 #folds = [0] # for debugging
-task_id = 361267
+task_id = 361266
 results_directory = "results_server_hyperparameter_tuning_20260519/"
 #results_directory = "results_server_default_hyperparameters_20260519/"
 output_directory = "latex/"
