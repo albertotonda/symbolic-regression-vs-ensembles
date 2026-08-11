@@ -8,7 +8,25 @@ Improvements:
 
 """
 
+"""
+This code here has to be included to measure memory usage
+from memory_profiler import memory_usage
+from pysr import PySRRegressor
+
+def train_model(model, X, y):
+    model.fit(X, y)
+
+model = PySRRegressor(niterations=40)
+
+# memory_usage returns a list of memory footprints (in MB) sampled every 0.1 seconds
+mem_samples = memory_usage((train_model, (model, X, y)), interval=0.1)
+
+avg_memory = sum(mem_samples) / len(mem_samples)
+print(f"Average memory during fit: {avg_memory:.2f} MB")
+"""
+
 import json
+from pyexpat import model
 
 import numpy as np
 import openml
@@ -28,8 +46,17 @@ from sklearn.model_selection import train_test_split
 
 from xgboost import XGBRegressor
 
+from memory_profiler import memory_usage # measure memory usage
+
 # local imports
 from common import initialize_logging, close_logging
+
+def train_model(model, X, y) :
+    """
+    This is just a utility function, to employ the memory profiler
+    """
+    model.fit(X, y)
+    return
 
 def get_sorted_tasks_ids() :
     """
@@ -204,7 +231,7 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "results_20260605_task_361250/" # I am assuming that the working directory is the root of the repository
+    results_folder = "local_results/results_20260810_memory/" # I am assuming that the working directory is the root of the repository
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
@@ -220,21 +247,21 @@ if __name__ == "__main__" :
     # these are the default hyperparameters for the regressors
     default_hyperparameters = {
         'RandomForestRegressor': {
-            'n_estimators' : 5000, # comment this, used for a single run
+            #'n_estimators' : 5000, # comment this, used for a single run
             'random_state' : random_seed, 
             'n_jobs' : -1
             },
         'XGBRegressor': {
-            'n_estimators' : 5000, # comment this, used for a single run
+            #'n_estimators' : 5000, # comment this, used for a single run
             'random_state' : random_seed, 
             'n_jobs' : -1
             },
         'PySRRegressor': { # NOTE: default hyperparameters have been altered for last-minute experiments, comment lines below
-            'elementwise_loss' : "loss(x, y) = max(x, 1e-8) - y + y * log(y / max(x, 1e-8))", # comment, Poisson loss used for ordinal regression
+            #'elementwise_loss' : "loss(x, y) = max(x, 1e-8) - y + y * log(y / max(x, 1e-8))", # comment, Poisson loss used for ordinal regression
             'binary_operators' : ["+", "-", "*", "/"], # comment this, used for a single run
             'unary_operators' : ["sin", "cos", "log", "exp"], # comment this, used for a single run
-            'maxsize' : 60, # comment this, used for a single run
-            'niterations' : 1000, # comment this, used for a single run
+            #'maxsize' : 60, # comment this, used for a single run
+            #'niterations' : 1000, # comment this, used for a single run
             'random_state' : random_seed, 
             'procs' : None, 
             'parallelism' : 'multiprocessing',
@@ -307,7 +334,7 @@ if __name__ == "__main__" :
 
     # get the list of task IDs to process, excluding the ones that are already completed
     task_ids  = get_sorted_tasks_ids() # this stopped working, for some reason
-    task_ids = [361250] # debugging, just one task
+    #task_ids = [361250] # debugging, just one task
     logger.info("Found " + str(len(task_ids)) + " tasks to process: " + str(task_ids))
 
     # prepare data structures, eventually reading the existing results file if it exists
@@ -369,9 +396,11 @@ if __name__ == "__main__" :
                         
                     # we need to measure the time spent on training
                     time_start = time.time()
-                    regressor.fit(X_train, y_train)
+                    #regressor.fit(X_train, y_train)
+                    mem_samples = memory_usage((train_model, (regressor, X, y)), interval=0.1)
                     time_on_fold = time.time() - time_start
-
+                    memory_usage_MB = sum(mem_samples) / len(mem_samples)
+                    
                     # get predictions and compute metrics
                     y_test_pred = regressor.predict(X_test)
 
@@ -386,7 +415,9 @@ if __name__ == "__main__" :
                         'categorical_features' : [categorical_features], 
                         'fold_id' : [fold_id], 
                         'regressor_name' : [regressor_name], 
-                        'time_on_fold' : [time_on_fold]
+                        'time_on_fold' : [time_on_fold],
+                        'mean_memory_usage_MB' : [memory_usage_MB],
+                        'peak_memory_usage_MB' : [max(mem_samples)],
                     }
 
                     # now, if the regressor is PySR, we need to select an equation on the validation set
