@@ -8,23 +8,6 @@ Improvements:
 
 """
 
-"""
-This code here has to be included to measure memory usage
-from memory_profiler import memory_usage
-from pysr import PySRRegressor
-
-def train_model(model, X, y):
-    model.fit(X, y)
-
-model = PySRRegressor(niterations=40)
-
-# memory_usage returns a list of memory footprints (in MB) sampled every 0.1 seconds
-mem_samples = memory_usage((train_model, (model, X, y)), interval=0.1)
-
-avg_memory = sum(mem_samples) / len(mem_samples)
-print(f"Average memory during fit: {avg_memory:.2f} MB")
-"""
-
 import json
 from pyexpat import model
 
@@ -231,12 +214,13 @@ def optuna_objective(trial, hyperparameters, regressor_class, X_train, y_train, 
 if __name__ == "__main__" :
 
     # hard-coded variables
-    results_folder = "local_results/results_20260810_memory/" # I am assuming that the working directory is the root of the repository
+    #results_folder = "local_results/results_20260810_memory/" # I am assuming that the working directory is the root of the repository
+    results_folder = "local_results/results_20260812_memory_hyperparameter_tuning/"
     results_file_name = "openml_ctr23_statistics.csv"
     
     random_seed = 42 # random seed
     val_set_ratio = 0.2 # percentage of the training set to use as validation
-    perform_hyperparameter_tuning = False # whether to perform hyperparameter tuning for the tree-based models
+    perform_hyperparameter_tuning = True # whether to perform hyperparameter tuning for the tree-based models
     min_time_for_tuning = 0 # minimum time in seconds to perform hyperparameter tuning, if the time available for tuning is less than this value, we skip tuning and use default hyperparameters
     timeout_in_seconds = 1440 # timeout for the longer experiments, corresponding to 24 minutes
 
@@ -450,10 +434,12 @@ if __name__ == "__main__" :
                             study = optuna.create_study(direction="minimize")
                             # we use a lambda function to pass the additional arguments to the objective function
                             hypertuning_start_time = time.time()
-                            study.optimize(
-                                lambda trial : optuna_objective(trial, tuning_hyperparameters, regressor_class, X_train, y_train, X_val, y_val), 
-                                timeout=time_available_for_tuning
-                                )
+                            mem_samples = memory_usage(            
+                                study.optimize(
+                                    lambda trial : optuna_objective(trial, tuning_hyperparameters, regressor_class, X_train, y_train, X_val, y_val), 
+                                    timeout=time_available_for_tuning
+                                    )
+                            )
 
                             logger.info("- Best hyperparameters found: " + str(study.best_params))
 
@@ -477,6 +463,8 @@ if __name__ == "__main__" :
                             logger.info("- R2 on validation set with tuned hyperparameters: %.4f" % r2_tuned)
 
                             fold_statistics['time_on_fold'][-1] += time_on_fold_with_tuning # update the time on fold to include the time spent on tuning
+                            fold_statistics['mean_memory_usage_MB'][-1] = sum(mem_samples) / len(mem_samples)
+                            fold_statistics['peak_memory_usage_MB'][-1] = max(mem_samples)
 
                             # check if the tuned model is better
                             if r2_tuned > r2_default :
