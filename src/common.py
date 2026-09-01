@@ -419,3 +419,95 @@ def pairwise_sbe_holm(methods_dict, alpha=0.05, cv_correction=True):
         })
         
     return pd.DataFrame(results)
+
+# another function coded by Gemini; in this case, we are not considering equivalence, but just non-inferiority
+def find_equivalent_best(dataset_results, margin=0.03, alpha=0.05, cv_correction=True):
+    """
+    Identifies the best model and finds all models that are non-inferior (practically equivalent) 
+    to it, using Nadeau-Bengio corrected non-inferiority testing and Holm-Bonferroni.
+    
+    Parameters:
+    - dataset_results: dict mapping model names to lists of R2 scores for a single dataset.
+    - margin: the non-inferiority margin (Delta). Positive float.
+    - alpha: family-wise significance level (default 0.05).
+    - cv_correction: bool, apply Nadeau-Bengio CV correction (default True).
+    
+    Returns:
+    - DataFrame summarizing the best model, mean scores, p-values, and equivalence status.
+    """
+    # Calculate means to find the empirical best model
+    means = {model: np.mean(scores) for model, scores in dataset_results.items()}
+    best_model_name = max(means, key=means.get)
+    best_scores = np.array(dataset_results[best_model_name])
+    
+    k = len(best_scores)
+    df = k - 1
+    
+    results = []
+    p_values_raw = []
+    
+    # 1. Run Non-Inferiority test against all OTHER models
+    other_models = [m for m in dataset_results.keys() if m != best_model_name]
+    
+    for model in other_models:
+        other_scores = np.array(dataset_results[model])
+        
+        # d is positive (Best - Other)
+        d = best_scores - other_scores
+        mean_d = np.mean(d)
+        sd = np.std(d, ddof=1)
+        
+        if cv_correction:
+            se = np.sqrt((1 / k + 1 / (k - 1))) * sd
+        else:
+            se = sd / np.sqrt(k)
+            
+        if se == 0:
+            p_val = 0.0 if mean_d < margin else 1.0
+        else:
+            # Non-inferiority test: H0: mean_d >= margin  --> H1: mean_d < margin
+            t_stat = (mean_d - margin) / se
+            p_val = t.cdf(t_stat, df) # Left-tail probability
+            
+        p_values_raw.append(p_val)
+        
+        results.append({
+            'Model': model,
+            'Mean R2': means[model],
+            'Diff from Best': mean_d,
+            'p_raw': p_val
+        })
+        
+    # 2. Apply Holm-Bonferroni correction across the (M-1) comparisons
+    m = len(results)
+    sorted_indices = sorted(range(m), key=lambda i: p_values_raw[i])
+    
+    adj_p_values = [0.0] * m
+    running_max = 0.0
+    
+    for rank, idx in enumerate(sorted_indices):
+        raw_p = p_values_raw[idx]
+        multiplier = m - rank
+        unadjusted_adj_p = raw_p * multiplier
+        
+        running_max = max(running_max, unadjusted_adj_p)
+        adj_p_values[idx] = min(1.0, running_max)
+        
+    # 3. Format final output, adding the Best model back in
+    final_output = [{
+        'Model': best_model_name,
+        'Mean R2': means[best_model_name],
+        'Diff from Best': 0.0,
+        'p_raw': np.nan,
+        'p_adjusted': np.nan,
+        'Equivalent Best': True,
+        'Status': 'Empirical Best'
+    }]
+    
+    for i, res in enumerate(results):
+        res['p_adjusted'] = adj_p_values[i]
+        res['Equivalent Best'] = adj_p_values[i] < alpha
+        res['Status'] = 'Equivalent' if adj_p_values[i] < alpha else 'Inferior'
+        final_output.append(res)
+        
+    return pd.DataFrame(final_output).sort_values(by='Mean R2', ascending=False).reset_index(drop=True)
